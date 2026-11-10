@@ -471,4 +471,1058 @@ function loadAdminSession() {
   var shell = document.getElementById('adminShell');
   if (shell) {
     shell.style.display = '';
-    shell.style.align
+    shell.style.alignItems = '';
+    shell.style.justifyContent = '';
+  }
+
+  var content = document.getElementById('adminContent');
+  if (content) {
+    content.innerHTML = '<div style="padding:3rem 1rem;text-align:center;"><div class="spinner"></div><p class="muted">Memeriksa hak akses admin...</p></div>';
+  }
+
+  callApi('api_adminGetSession', { token: ADMIN_STATE.token }).then(function (sess) {
+    ADMIN_STATE.session = sess;
+
+    var whoEl = document.getElementById('adminWho');
+    if (whoEl) whoEl.textContent = sess.displayName || sess.email;
+
+    var roleBadge = document.getElementById('adminRoleBadge');
+    if (roleBadge) {
+      var isSuper = sess.role === 'SUPERADMIN';
+      roleBadge.innerHTML = '<span class="status ' + (isSuper ? 'st-APPROVED' : 'st-IN_REVIEW') + '" style="font-size:.72rem;padding:.1rem .5rem;">' +
+        (isSuper ? '★ SUPERADMIN' : 'ADMIN KURATOR') + '</span>';
+    }
+
+    var btnLogout = document.getElementById('btnAdminLogout');
+    if (btnLogout) btnLogout.style.display = 'block';
+
+    var btnSuperTab = document.getElementById('btnTabManageAdmins');
+    if (btnSuperTab) {
+      btnSuperTab.style.display = (sess.role === 'SUPERADMIN') ? 'flex' : 'none';
+    }
+
+    callApi('api_listPublicCategories').then(function (cats) {
+      ADMIN_STATE.categories = cats;
+    });
+
+    switchAdminTab('dashboard');
+  }).catch(function (err) {
+    ADMIN_STATE.token = null;
+    localStorage.removeItem('eduapps_admin_token');
+    renderAdminLoginForm(err.message || 'Sesi login berakhir. Silakan masuk kembali.');
+  });
+}
+
+function renderAdminLoginForm(errorMessage) {
+  var sidebar = document.getElementById('adminSidebar');
+  if (sidebar) sidebar.style.display = 'none';
+
+  var shell = document.getElementById('adminShell');
+  if (shell) {
+    shell.style.display = 'flex';
+    shell.style.alignItems = 'center';
+    shell.style.justifyContent = 'center';
+    shell.style.minHeight = '100vh';
+  }
+
+  var container = document.getElementById('adminContent');
+  if (!container) return;
+
+  var whoEl = document.getElementById('adminWho');
+  if (whoEl) whoEl.textContent = '-';
+  var roleBadge = document.getElementById('adminRoleBadge');
+  if (roleBadge) roleBadge.innerHTML = '';
+  var btnLogout = document.getElementById('btnAdminLogout');
+  if (btnLogout) btnLogout.style.display = 'none';
+  var btnSuperTab = document.getElementById('btnTabManageAdmins');
+  if (btnSuperTab) btnSuperTab.style.display = 'none';
+
+  container.innerHTML = '<div style="max-width:440px;width:100%;margin:0 auto;padding:1rem;">' +
+    '<div class="panel" style="padding:2.25rem 2rem;box-shadow:0 12px 32px rgba(16,24,40,.12);border-radius:16px;">' +
+    '<div style="text-align:center;margin-bottom:1.5rem;">' +
+    '<div class="brand-mark" style="margin:0 auto .75rem;width:48px;height:48px;font-size:1.3rem;">T</div>' +
+    '<h2 style="font-size:1.4rem;margin:0 0 .25rem;">Masuk Panel Kurasi</h2>' +
+    '<p class="muted small" style="margin:0;">Tirtomoyo EduApps Admin</p>' +
+    '</div>' +
+    (errorMessage ? '<div class="alert alert-error small" style="margin-bottom:1rem;">' + escapeHtml(errorMessage) + '</div>' : '') +
+    '<form id="formAdminLogin">' +
+    '<div class="field">' +
+    '<label class="label" for="admEmail">Alamat Email</label>' +
+    '<input type="email" id="admEmail" placeholder="nama@gmail.com" required autocomplete="email">' +
+    '</div>' +
+    '<div class="field">' +
+    '<label class="label" for="admPassword">Password</label>' +
+    '<input type="password" id="admPassword" placeholder="••••••••" required autocomplete="current-password">' +
+    '</div>' +
+    '<button type="submit" class="btn btn-primary" id="btnSubmitLogin" style="width:100%;margin-top:.75rem;">Masuk ke Panel</button>' +
+    '</form>' +
+    '<div style="margin-top:1.5rem;text-align:center;">' +
+    '<a href="index.html" class="small muted" style="text-decoration:none;">← Kembali ke Portal Publik</a>' +
+    '</div>' +
+    '</div>' +
+    '</div>';
+
+  var form = document.getElementById('formAdminLogin');
+  if (form) {
+    form.onsubmit = function (e) {
+      e.preventDefault();
+      var btn = document.getElementById('btnSubmitLogin');
+      btn.disabled = true;
+      btn.textContent = 'Memverifikasi...';
+
+      var email = document.getElementById('admEmail').value.trim();
+      var password = document.getElementById('admPassword').value;
+
+      callApi('api_adminLogin', { email: email, password: password }).then(function (res) {
+        ADMIN_STATE.token = res.token;
+        localStorage.setItem('eduapps_admin_token', res.token);
+        showToast('Selamat datang, ' + res.name + '!', 'success');
+        loadAdminSession();
+      }).catch(function (err) {
+        btn.disabled = false;
+        btn.textContent = 'Masuk ke Panel';
+        showToast(err.message || 'Login gagal.', 'error');
+        renderAdminLoginForm(err.message || 'Email atau password salah.');
+      });
+    };
+  }
+}
+
+function adminLogout() {
+  showConfirmModal('Konfirmasi Keluar', 'Yakin ingin keluar dari panel admin?', 'Keluar').then(function (ok) {
+    if (ok) {
+      ADMIN_STATE.token = null;
+      ADMIN_STATE.session = null;
+      localStorage.removeItem('eduapps_admin_token');
+      showToast('Anda telah keluar.', 'success');
+      renderAdminLoginForm();
+    }
+  });
+}
+
+function switchAdminTab(tabName) {
+  ADMIN_STATE.activeTab = tabName;
+  document.querySelectorAll('.sidebar nav button').forEach(function (btn) {
+    btn.classList.remove('active');
+    if (btn.getAttribute('data-tab') === tabName) btn.classList.add('active');
+  });
+
+  var container = document.getElementById('adminContent');
+  if (!container) return;
+
+  if (tabName === 'dashboard') renderAdminDashboard(container);
+  else if (tabName === 'submissions') renderAdminSubmissions(container);
+  else if (tabName === 'apps') renderAdminApps(container);
+  else if (tabName === 'audit') renderAdminAudit(container);
+  else if (tabName === 'manage_admins') renderAdminManageAdmins(container);
+}
+
+/* ==========================================================================
+   3. DASHBOARD KURASI & METRIK
+   ========================================================================== */
+
+function renderAdminDashboard(container) {
+  container.innerHTML = '<div class="spinner"></div>';
+
+  callApi('api_adminDashboard').then(function (data) {
+    container.innerHTML = '';
+
+    var head = document.createElement('div');
+    head.innerHTML = '<h2>Dashboard Kurasi & Manajemen</h2><p class="muted">Ringkasan status aplikasi dan antrean pengajuan guru di Kecamatan Tirtomoyo.</p>';
+    container.appendChild(head);
+
+    var stats = document.createElement('div');
+    stats.className = 'stats';
+
+    var sPending = data.submissions.PENDING || 0;
+    var sReview = data.submissions.IN_REVIEW || 0;
+    var aPublished = data.apps.PUBLISHED || 0;
+    var aDraft = data.apps.DRAFT || 0;
+
+    stats.innerHTML = '<div class="stat"><div class="num" style="color:var(--warning);">' + sPending + '</div><div class="lbl">Pengajuan Menunggu (Pending)</div></div>' +
+      '<div class="stat"><div class="num" style="color:var(--blue);">' + sReview + '</div><div class="lbl">Sedang Ditinjau (In Review)</div></div>' +
+      '<div class="stat"><div class="num" style="color:var(--success);">' + aPublished + '</div><div class="lbl">Aplikasi Terbit di Katalog</div></div>' +
+      '<div class="stat"><div class="num">' + aDraft + '</div><div class="lbl">Draf Aplikasi</div></div>';
+    container.appendChild(stats);
+
+    var badgeSub = document.getElementById('badgeSubCount');
+    if (badgeSub) {
+      var totalAction = sPending + sReview;
+      badgeSub.textContent = totalAction > 0 ? totalAction : '';
+      badgeSub.style.display = totalAction > 0 ? 'inline-block' : 'none';
+    }
+
+    var sec = document.createElement('div');
+    sec.style.marginTop = '2rem';
+    sec.innerHTML = '<div class="section-head"><h3>Antrean Pengajuan Terkini</h3><button class="btn btn-secondary btn-sm" onclick="switchAdminTab(\'submissions\')">Lihat Semua Pengajuan →</button></div>';
+
+    if (!data.actionable || data.actionable.length === 0) {
+      sec.innerHTML += '<div class="state"><p class="muted">Tidak ada pengajuan yang membutuhkan tindakan segera saat ini.</p></div>';
+    } else {
+      var tblWrap = document.createElement('div');
+      tblWrap.className = 'table-wrap';
+      var tbl = document.createElement('table');
+      tbl.innerHTML = '<thead><tr><th>Tanggal</th><th>Nama Aplikasi</th><th>Pengembang / Sekolah</th><th>Status</th><th>Aksi</th></tr></thead>';
+      var tbody = document.createElement('tbody');
+
+      data.actionable.forEach(function (s) {
+        var tr = document.createElement('tr');
+        tr.innerHTML = '<td style="white-space:nowrap;">' + formatDateId(s.submittedAt) + '</td>' +
+          '<td><strong>' + escapeHtml(s.title) + '</strong><br><span class="muted small">' + escapeHtml((s.gradeLabels || []).join(', ')) + '</span></td>' +
+          '<td>' + escapeHtml(s.creatorName) + '<br><span class="muted small">' + escapeHtml(s.schoolName) + '</span></td>' +
+          '<td><span class="status st-' + s.status + '">' + s.status + '</span></td>' +
+          '<td><button class="btn btn-primary btn-sm btn-rev">Tinjau</button></td>';
+        tr.querySelector('.btn-rev').onclick = function () {
+          openSubmissionDetailModal(s.submissionId);
+        };
+        tbody.appendChild(tr);
+      });
+
+      tbl.appendChild(tbody);
+      tblWrap.appendChild(tbl);
+      sec.appendChild(tblWrap);
+    }
+    container.appendChild(sec);
+  }).catch(function (err) {
+    container.innerHTML = '<div class="state error"><h3>Gagal Memuat Dashboard</h3><p>' + escapeHtml(err.message) + '</p></div>';
+  });
+}
+
+/* ==========================================================================
+   4. DAFTAR PENGAJUAN GURU & MODERASI
+   ========================================================================== */
+
+function renderAdminSubmissions(container) {
+  container.innerHTML = '<h2>Daftar Pengajuan Guru</h2><p class="muted">Tinjau, beri catatan revisi, edit informasi, atau setujui verifikasi aplikasi.</p>' +
+    '<div class="toolbar">' +
+    '<input type="search" id="admSubQuery" placeholder="Cari judul, guru, atau ID..." value="' + escapeHtml(ADMIN_STATE.submissionsFilter) + '">' +
+    '<select id="admSubStatus"><option value="">Semua Status</option><option value="PENDING">PENDING</option><option value="IN_REVIEW">IN_REVIEW</option><option value="NEEDS_REVISION">NEEDS_REVISION</option><option value="APPROVED">APPROVED</option><option value="REJECTED">REJECTED</option></select>' +
+    '<button class="btn btn-primary btn-sm" id="btnAdmSubFilter">Filter</button>' +
+    '</div>' +
+    '<div id="admSubTableWrap"><div class="spinner"></div></div>' +
+    '<div id="admSubPager" class="pager"></div>';
+
+  var btnF = document.getElementById('btnAdmSubFilter');
+  var inQ = document.getElementById('admSubQuery');
+  var selS = document.getElementById('admSubStatus');
+
+  btnF.onclick = function () {
+    ADMIN_STATE.submissionsFilter = inQ.value.trim();
+    ADMIN_STATE.submissionsPage = 1;
+    loadAdminSubmissionsData(selS.value);
+  };
+
+  loadAdminSubmissionsData('');
+}
+
+function loadAdminSubmissionsData(statusFilter) {
+  var wrap = document.getElementById('admSubTableWrap');
+  var pager = document.getElementById('admSubPager');
+  if (!wrap) return;
+  wrap.innerHTML = '<div class="spinner"></div>';
+
+  callApi('api_adminListSubmissions', {
+    page: ADMIN_STATE.submissionsPage,
+    pageSize: 15,
+    status: statusFilter ? [statusFilter] : [],
+    query: ADMIN_STATE.submissionsFilter
+  }).then(function (res) {
+    if (!res.items || res.items.length === 0) {
+      wrap.innerHTML = '<div class="state"><p class="muted">Tidak ada data pengajuan yang cocok.</p></div>';
+      if (pager) pager.innerHTML = '';
+      return;
+    }
+
+    var tbl = document.createElement('div');
+    tbl.className = 'table-wrap';
+    var t = document.createElement('table');
+    t.innerHTML = '<thead><tr><th>Tgl Ajukan</th><th>Aplikasi</th><th>Guru / Sekolah</th><th>Mapel & Kelas</th><th>Status</th><th>Aksi</th></tr></thead>';
+    var tbody = document.createElement('tbody');
+
+    res.items.forEach(function (s) {
+      var tr = document.createElement('tr');
+      tr.innerHTML = '<td style="white-space:nowrap;" class="small">' + formatDateId(s.submittedAt) + '</td>' +
+        '<td><strong>' + escapeHtml(s.title) + '</strong><br><span class="code small">' + escapeHtml(s.submissionId) + '</span></td>' +
+        '<td>' + escapeHtml(s.creatorName) + '<br><span class="muted small">' + escapeHtml(s.schoolName) + '</span></td>' +
+        '<td><span class="small">' + escapeHtml((s.subjectLabels || []).join(', ')) + '</span><br><span class="muted small">' + escapeHtml((s.gradeLabels || []).join(', ')) + '</span></td>' +
+        '<td><span class="status st-' + s.status + '">' + s.status + '</span></td>' +
+        '<td><button class="btn btn-secondary btn-sm btn-act">Buka</button></td>';
+
+      tr.querySelector('.btn-act').onclick = function () {
+        openSubmissionDetailModal(s.submissionId);
+      };
+      tbody.appendChild(tr);
+    });
+
+    t.appendChild(tbody);
+    tbl.appendChild(t);
+    wrap.innerHTML = '';
+    wrap.appendChild(tbl);
+
+    if (pager) {
+      pager.innerHTML = '';
+      if (res.pagination.totalPages > 1) {
+        if (res.pagination.page > 1) {
+          var pBtn = document.createElement('button');
+          pBtn.className = 'btn btn-secondary btn-sm';
+          pBtn.textContent = '←';
+          pBtn.onclick = function () { ADMIN_STATE.submissionsPage--; loadAdminSubmissionsData(statusFilter); };
+          pager.appendChild(pBtn);
+        }
+        var pInfo = document.createElement('span');
+        pInfo.className = 'small muted';
+        pInfo.textContent = res.pagination.page + ' / ' + res.pagination.totalPages;
+        pager.appendChild(pInfo);
+        if (res.pagination.page < res.pagination.totalPages) {
+          var nBtn = document.createElement('button');
+          nBtn.className = 'btn btn-secondary btn-sm';
+          nBtn.textContent = '→';
+          nBtn.onclick = function () { ADMIN_STATE.submissionsPage++; loadAdminSubmissionsData(statusFilter); };
+          pager.appendChild(nBtn);
+        }
+      }
+    }
+  }).catch(function (err) {
+    wrap.innerHTML = '<div class="state error"><p>' + escapeHtml(err.message) + '</p></div>';
+  });
+}
+
+function openSubmissionDetailModal(submissionId) {
+  var backdrop = document.createElement('div');
+  backdrop.className = 'modal-backdrop';
+
+  var modal = document.createElement('div');
+  modal.className = 'modal';
+  modal.style.maxWidth = '780px';
+  modal.style.maxHeight = '90vh';
+  modal.style.overflowY = 'auto';
+
+  modal.innerHTML = '<div class="spinner"></div><p style="text-align:center;">Memuat rincian pengajuan...</p>';
+  backdrop.appendChild(modal);
+  document.body.appendChild(backdrop);
+
+  callApi('api_adminGetSubmissionDetail', { submissionId: submissionId }).then(function (s) {
+    modal.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:flex-start;">' +
+      '<div><h3>' + escapeHtml(s.title) + '</h3><span class="code small">' + escapeHtml(s.submissionId) + '</span> <span class="status st-' + s.status + '">' + s.status + '</span></div>' +
+      '<div><button class="btn btn-secondary btn-sm" id="btnEditSubModal" style="margin-right:.5rem;">✏️ Edit Data</button><button class="btn btn-secondary btn-sm" id="btnCloseSubModal">✕</button></div>' +
+      '</div>';
+
+    modal.querySelector('#btnEditSubModal').onclick = function () {
+      openEditSubmissionModal(s, function () {
+        document.body.removeChild(backdrop);
+        openSubmissionDetailModal(submissionId);
+      });
+    };
+
+    modal.querySelector('#btnCloseSubModal').onclick = function () {
+      document.body.removeChild(backdrop);
+    };
+
+    var content = document.createElement('div');
+    content.style.marginTop = '1rem';
+
+    var dl = document.createElement('dl');
+    dl.className = 'meta';
+    dl.innerHTML = '<dt>Pengembang</dt><dd>' + escapeHtml(s.creatorName) + '</dd>' +
+      '<dt>Sekolah</dt><dd>' + escapeHtml(s.schoolName) + ' (NPSN: ' + escapeHtml(s.schoolNpsn) + ')</dd>' +
+      '<dt>Kontak</dt><dd><strong style="color:var(--navy);">' + escapeHtml(s.contact) + '</strong></dd>' +
+      '<dt>Kelas SD</dt><dd>' + escapeHtml((s.gradeLabels || []).join(', ')) + '</dd>' +
+      '<dt>Mapel</dt><dd>' + escapeHtml((s.subjectLabels || []).join(', ')) + '</dd>' +
+      '<dt>Jenis</dt><dd>' + escapeHtml(s.category ? s.category.label : '-') + '</dd>' +
+      '<dt>URL Aplikasi</dt><dd><a href="' + escapeHtml(s.targetUrl) + '" target="_blank" rel="noopener noreferrer" style="font-weight:700;">' + escapeHtml(s.targetUrl) + ' ↗</a></dd>' +
+      (s.thumbnailUrl ? '<dt>URL Gambar</dt><dd><a href="' + escapeHtml(s.thumbnailUrl) + '" target="_blank" rel="noopener noreferrer">' + escapeHtml(s.thumbnailUrl) + ' ↗</a></dd>' : '') +
+      '<dt>Tgl Ajukan</dt><dd>' + formatDateId(s.submittedAt) + '</dd>';
+    content.appendChild(dl);
+
+    var descBox = document.createElement('div');
+    descBox.style.margin = '1rem 0';
+    descBox.innerHTML = '<strong>Ringkasan:</strong><p class="muted small">' + escapeHtml(s.shortDescription) + '</p>' +
+      '<strong>Deskripsi Lengkap:</strong><div class="prewrap muted small" style="background:#fff;border:1px solid var(--border);padding:.5rem;border-radius:6px;max-height:140px;overflow:auto;">' + escapeHtml(s.description) + '</div>';
+    if (s.learningObjective) {
+      descBox.innerHTML += '<strong style="display:block;margin-top:.5rem;">Tujuan Belajar:</strong><p class="muted small">' + escapeHtml(s.learningObjective) + '</p>';
+    }
+    content.appendChild(descBox);
+
+    if (s.reviewNotes) {
+      var hist = document.createElement('div');
+      hist.style.marginBottom = '1rem';
+      hist.innerHTML = '<strong>Riwayat Catatan Review:</strong><div class="notes-log">' + escapeHtml(s.reviewNotes) + '</div>';
+      content.appendChild(hist);
+    }
+
+    var actSection = document.createElement('div');
+    actSection.style.borderTop = '1px solid var(--border)';
+    actSection.style.paddingTop = '1rem';
+
+    var hAct = document.createElement('h4');
+    hAct.textContent = 'Aksi Peninjauan Admin';
+    actSection.appendChild(hAct);
+
+    var noteField = document.createElement('div');
+    noteField.className = 'field';
+    noteField.innerHTML = '<label for="admReviewNote" class="label">Catatan Review / Alasan Revisi / Penolakan</label>' +
+      '<textarea id="admReviewNote" placeholder="Tuliskan catatan arahan guru atau alasan penolakan..."></textarea>';
+    actSection.appendChild(noteField);
+
+    var btnRow = document.createElement('div');
+    btnRow.className = 'actions';
+
+    if (s.allowedActions && s.allowedActions.indexOf('START_REVIEW') !== -1) {
+      var bReview = document.createElement('button');
+      bReview.className = 'btn btn-secondary btn-sm';
+      bReview.textContent = 'Mulai Meninjau (In Review)';
+      bReview.onclick = function () {
+        submitReviewAction(s.submissionId, 'START_REVIEW', '', false, backdrop);
+      };
+      btnRow.appendChild(bReview);
+    }
+
+    if (s.allowedActions && s.allowedActions.indexOf('REQUEST_REVISION') !== -1) {
+      var bRev = document.createElement('button');
+      bRev.className = 'btn btn-secondary btn-sm';
+      bRev.style.color = 'var(--warning)';
+      bRev.textContent = 'Minta Revisi';
+      bRev.onclick = function () {
+        var note = modal.querySelector('#admReviewNote').value.trim();
+        if (note.length < 5) {
+          showToast('Harap tuliskan catatan instruksi perbaikan (min. 5 karakter).', 'error');
+          return;
+        }
+        submitReviewAction(s.submissionId, 'REQUEST_REVISION', note, false, backdrop);
+      };
+      btnRow.appendChild(bRev);
+    }
+
+    if (s.allowedActions && s.allowedActions.indexOf('REJECT') !== -1) {
+      var bRej = document.createElement('button');
+      bRej.className = 'btn btn-danger btn-sm';
+      bRej.textContent = 'Tolak Pengajuan';
+      bRej.onclick = function () {
+        var note = modal.querySelector('#admReviewNote').value.trim();
+        if (note.length < 5) {
+          showToast('Harap tuliskan alasan penolakan (min. 5 karakter).', 'error');
+          return;
+        }
+        showConfirmModal('Konfirmasi Penolakan', 'Yakin menolak pengajuan ini? Aplikasi yang sedang tayang di katalog akan dinonaktifkan.', 'Tolak', true).then(function (ok) {
+          if (ok) submitReviewAction(s.submissionId, 'REJECT', note, false, backdrop);
+        });
+      };
+      btnRow.appendChild(bRej);
+    }
+
+    if (s.allowedActions && s.allowedActions.indexOf('APPROVE') !== -1) {
+      var bApprPub = document.createElement('button');
+      bApprPub.className = 'btn btn-success btn-sm';
+      bApprPub.textContent = '✔ Verifikasi & Beri Badge';
+      bApprPub.onclick = function () {
+        var note = modal.querySelector('#admReviewNote').value.trim();
+        showVerificationChecklistModal(s.title).then(function (verified) {
+          if (verified) submitReviewAction(s.submissionId, 'APPROVE', note, true, backdrop);
+        });
+      };
+      btnRow.appendChild(bApprPub);
+    }
+
+    actSection.appendChild(btnRow);
+    content.appendChild(actSection);
+    modal.appendChild(content);
+  }).catch(function (err) {
+    modal.innerHTML = '<div class="state error"><h3>Gagal Membuka Detail</h3><p>' + escapeHtml(err.message) + '</p></div>';
+  });
+}
+
+function submitReviewAction(submissionId, action, reviewNote, publish, backdrop) {
+  callApi('api_adminReviewSubmission', {
+    submissionId: submissionId,
+    action: action,
+    reviewNote: reviewNote,
+    publish: publish
+  }).then(function (res) {
+    showToast('Tindakan berhasil diproses: ' + res.status, 'success');
+    if (backdrop && backdrop.parentNode) backdrop.parentNode.removeChild(backdrop);
+    loadAdminSubmissionsData('');
+  }).catch(function (err) {
+    showToast(err.message || 'Gagal memproses aksi review.', 'error');
+  });
+}
+
+/* ==========================================================================
+   5. MANAJEMEN APLIKASI (KATALOG ADMIN)
+   ========================================================================== */
+
+function renderAdminApps(container) {
+  container.innerHTML = '<h2>Manajemen Aplikasi Terbit & Draf</h2><p class="muted">Ubah metadata, aktifkan/nonaktifkan aplikasi, atau tandai sebagai pilihan unggulan.</p>' +
+    '<div class="toolbar">' +
+    '<input type="search" id="admAppQuery" placeholder="Cari judul atau pengembang..." value="' + escapeHtml(ADMIN_STATE.appsFilter) + '">' +
+    '<select id="admAppStatus"><option value="">Semua Status</option><option value="PUBLISHED">PUBLISHED (Terbit)</option><option value="DRAFT">DRAFT</option><option value="DISABLED">DISABLED (Nonaktif)</option></select>' +
+    '<button class="btn btn-primary btn-sm" id="btnAdmAppFilter">Filter</button>' +
+    '</div>' +
+    '<div id="admAppTableWrap"><div class="spinner"></div></div>' +
+    '<div id="admAppPager" class="pager"></div>';
+
+  var btnF = document.getElementById('btnAdmAppFilter');
+  var inQ = document.getElementById('admAppQuery');
+  var selS = document.getElementById('admAppStatus');
+
+  btnF.onclick = function () {
+    ADMIN_STATE.appsFilter = inQ.value.trim();
+    ADMIN_STATE.appsPage = 1;
+    loadAdminAppsData(selS.value);
+  };
+
+  loadAdminAppsData('');
+}
+
+function loadAdminAppsData(statusFilter) {
+  var wrap = document.getElementById('admAppTableWrap');
+  var pager = document.getElementById('admAppPager');
+  if (!wrap) return;
+  wrap.innerHTML = '<div class="spinner"></div>';
+
+  callApi('api_adminListApps', {
+    page: ADMIN_STATE.appsPage,
+    pageSize: 15,
+    status: statusFilter ? [statusFilter] : [],
+    query: ADMIN_STATE.appsFilter
+  }).then(function (res) {
+    if (!res.items || res.items.length === 0) {
+      wrap.innerHTML = '<div class="state"><p class="muted">Belum ada aplikasi yang terdaftar dengan filter ini.</p></div>';
+      if (pager) pager.innerHTML = '';
+      return;
+    }
+
+    var tbl = document.createElement('div');
+    tbl.className = 'table-wrap';
+    var t = document.createElement('table');
+    t.innerHTML = '<thead><tr><th>Aplikasi</th><th>Kelas & Mapel</th><th>Pengembang</th><th>Status</th><th>Unggulan</th><th>Aksi</th></tr></thead>';
+    var tbody = document.createElement('tbody');
+
+    res.items.forEach(function (app) {
+      var tr = document.createElement('tr');
+      tr.innerHTML = '<td><strong>' + escapeHtml(app.title) + '</strong> ' + (app.isVerified ? '<span style="color:#027A48;font-size:.78rem;">✔ Terverifikasi</span>' : '') + '<br><a href="' + escapeHtml(app.targetUrl) + '" target="_blank" rel="noopener noreferrer" class="small muted">' + escapeHtml(app.slug) + ' ↗</a></td>' +
+        '<td><span class="small">' + escapeHtml((app.gradeLabels || []).join(', ')) + '</span><br><span class="muted small">' + escapeHtml((app.subjectLabels || []).join(', ')) + '</span></td>' +
+        '<td>' + escapeHtml(app.creatorName) + '<br><span class="muted small">' + escapeHtml(app.schoolName || '-') + '</span></td>' +
+        '<td><span class="status st-' + app.status + '">' + app.status + '</span></td>' +
+        '<td><input type="checkbox" class="cb-feat" ' + (app.featured ? 'checked' : '') + ' ' + (app.status !== 'PUBLISHED' ? 'disabled' : '') + ' title="Tandai aplikasi pilihan"></td>' +
+        '<td><div class="actions"><button class="btn btn-secondary btn-sm btn-edit">Edit</button><button class="btn btn-sm btn-toggle-stat">' + (app.status === 'PUBLISHED' ? 'Nonaktifkan' : 'Terbitkan') + '</button></div></td>';
+
+      var cbFeat = tr.querySelector('.cb-feat');
+      cbFeat.onchange = function () {
+        callApi('api_adminSetFeatured', { appId: app.appId, featured: cbFeat.checked }).then(function () {
+          showToast(cbFeat.checked ? 'Ditandai sebagai unggulan.' : 'Dihapus dari unggulan.', 'success');
+        }).catch(function (err) {
+          cbFeat.checked = !cbFeat.checked;
+          showToast(err.message, 'error');
+        });
+      };
+
+      tr.querySelector('.btn-edit').onclick = function () {
+        openEditAppModal(app.appId);
+      };
+
+      var btnToggle = tr.querySelector('.btn-toggle-stat');
+      if (app.status === 'PUBLISHED') {
+        btnToggle.className += ' btn-danger';
+        btnToggle.onclick = function () {
+          showPromptModal('Konfirmasi Penonaktifan Aplikasi', 'Alasan penonaktifan aplikasi "' + app.title + '":', 'Tuliskan alasan penonaktifan...', 'Nonaktifkan', 5).then(function (reason) {
+            if (!reason) return;
+            callApi('api_adminSetAppStatus', { appId: app.appId, status: 'DISABLED', reason: reason }).then(function () {
+              showToast('Aplikasi "' + app.title + '" berhasil dinonaktifkan.', 'success');
+              loadAdminAppsData(statusFilter);
+            }).catch(function (e) { showToast(e.message, 'error'); });
+          });
+        };
+      } else {
+        btnToggle.className += ' btn-primary';
+        btnToggle.onclick = function () {
+          showConfirmModal('Terbitkan Aplikasi', 'Aplikasi "' + app.title + '" akan dipublikasikan ke katalog publik.', 'Terbitkan').then(function (ok) {
+            if (ok) {
+              callApi('api_adminSetAppStatus', { appId: app.appId, status: 'PUBLISHED' }).then(function () {
+                showToast('Aplikasi berhasil diterbitkan!', 'success');
+                loadAdminAppsData(statusFilter);
+              }).catch(function (e) { showToast(e.message, 'error'); });
+            }
+          });
+        };
+      }
+
+      tbody.appendChild(tr);
+    });
+
+    t.appendChild(tbody);
+    tbl.appendChild(t);
+    wrap.innerHTML = '';
+    wrap.appendChild(tbl);
+
+    if (pager) {
+      pager.innerHTML = '';
+      if (res.pagination.totalPages > 1) {
+        if (res.pagination.page > 1) {
+          var pBtn = document.createElement('button');
+          pBtn.className = 'btn btn-secondary btn-sm';
+          pBtn.textContent = '←';
+          pBtn.onclick = function () { ADMIN_STATE.appsPage--; loadAdminAppsData(statusFilter); };
+          pager.appendChild(pBtn);
+        }
+        var pInfo = document.createElement('span');
+        pInfo.className = 'small muted';
+        pInfo.textContent = res.pagination.page + ' / ' + res.pagination.totalPages;
+        pager.appendChild(pInfo);
+        if (res.pagination.page < res.pagination.totalPages) {
+          var nBtn = document.createElement('button');
+          nBtn.className = 'btn btn-secondary btn-sm';
+          nBtn.textContent = '→';
+          nBtn.onclick = function () { ADMIN_STATE.appsPage++; loadAdminAppsData(statusFilter); };
+          pager.appendChild(nBtn);
+        }
+      }
+    }
+  }).catch(function (err) {
+    wrap.innerHTML = '<div class="state error"><p>' + escapeHtml(err.message) + '</p></div>';
+  });
+}
+
+function openEditAppModal(appId) {
+  var backdrop = document.createElement('div');
+  backdrop.className = 'modal-backdrop';
+
+  var modal = document.createElement('div');
+  modal.className = 'modal';
+  modal.style.maxWidth = '750px';
+  modal.style.maxHeight = '90vh';
+  modal.style.overflowY = 'auto';
+
+  modal.innerHTML = '<div class="spinner"></div><p style="text-align:center;">Memuat data aplikasi...</p>';
+  backdrop.appendChild(modal);
+  document.body.appendChild(backdrop);
+
+  callApi('api_adminGetApp', { appId: appId }).then(function (a) {
+    modal.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center;">' +
+      '<h3>Edit Metadata: ' + escapeHtml(a.title) + '</h3>' +
+      '<button class="btn btn-secondary btn-sm" id="btnCloseEditModal">✕</button>' +
+      '</div>';
+
+    modal.querySelector('#btnCloseEditModal').onclick = function () {
+      document.body.removeChild(backdrop);
+    };
+
+    var form = document.createElement('form');
+    form.style.marginTop = '1rem';
+
+    form.appendChild(createFormField('edit_title', 'Nama Aplikasi', 'text', '', true));
+    form.querySelector('#in_edit_title').value = a.title;
+
+    form.appendChild(createFormField('edit_short', 'Ringkasan', 'text', '', true));
+    form.querySelector('#in_edit_short').value = a.shortDescription;
+
+    form.appendChild(createFormField('edit_desc', 'Deskripsi Lengkap', 'textarea', '', true));
+    form.querySelector('#in_edit_desc').value = a.description;
+
+    form.appendChild(createFormField('edit_obj', 'Tujuan Belajar', 'textarea', '', false));
+    form.querySelector('#in_edit_obj').value = a.learningObjective || '';
+
+    form.appendChild(createFormField('edit_url', 'URL Aplikasi (HTTPS)', 'url', '', true));
+    form.querySelector('#in_edit_url').value = a.targetUrl;
+
+    form.appendChild(createThumbnailUploadField('edit_thumb', 'Gambar Sampul / Tangkapan Layar', a.thumbnailUrl || ''));
+
+    form.appendChild(createFormField('edit_dev', 'Nama Pengembang', 'text', '', true));
+    form.querySelector('#in_edit_dev').value = a.creatorName;
+
+    form.appendChild(createFormField('edit_tags', 'Tags', 'text', '', false));
+    form.querySelector('#in_edit_tags').value = (a.tags || []).join(', ');
+
+    form.appendChild(createFormField('edit_notes', 'Catatan Internal Admin', 'textarea', '', false));
+    form.querySelector('#in_edit_notes').value = a.adminNotes || '';
+
+    var btnSave = document.createElement('button');
+    btnSave.type = 'submit';
+    btnSave.className = 'btn btn-primary btn-sm';
+    btnSave.style.marginTop = '1rem';
+    btnSave.textContent = 'Simpan Perubahan';
+    form.appendChild(btnSave);
+
+    form.onsubmit = function (e) {
+      e.preventDefault();
+      btnSave.disabled = true;
+      btnSave.textContent = 'Menyimpan...';
+
+      var payload = {
+        appId: a.appId,
+        title: form.querySelector('#in_edit_title').value.trim(),
+        shortDescription: form.querySelector('#in_edit_short').value.trim(),
+        description: form.querySelector('#in_edit_desc').value.trim(),
+        learningObjective: form.querySelector('#in_edit_obj').value.trim(),
+        targetUrl: form.querySelector('#in_edit_url').value.trim(),
+        thumbnailUrl: form.querySelector('#in_edit_thumb').value.trim(),
+        creatorName: form.querySelector('#in_edit_dev').value.trim(),
+        tags: form.querySelector('#in_edit_tags').value.trim(),
+        adminNotes: form.querySelector('#in_edit_notes').value.trim(),
+        subjectIds: a.subjectIds,
+        gradeIds: a.gradeIds,
+        categoryId: a.categoryId
+      };
+
+      callApi('api_adminUpdateApp', payload).then(function () {
+        showToast('Perubahan aplikasi berhasil disimpan.', 'success');
+        document.body.removeChild(backdrop);
+        loadAdminAppsData('');
+      }).catch(function (err) {
+        btnSave.disabled = false;
+        btnSave.textContent = 'Simpan Perubahan';
+        showToast(err.message || 'Gagal menyimpan.', 'error');
+      });
+    };
+
+    modal.appendChild(form);
+  }).catch(function (err) {
+    modal.innerHTML = '<div class="state error"><p>' + escapeHtml(err.message) + '</p></div>';
+  });
+}
+
+/* ==========================================================================
+   6. MODAL EDIT PENGAJUAN & MODAL CHECKLIST VERIFIKASI
+   ========================================================================== */
+
+function openEditSubmissionModal(s, onSuccess) {
+  var backdrop = document.createElement('div');
+  backdrop.className = 'modal-backdrop';
+
+  var modal = document.createElement('div');
+  modal.className = 'modal';
+  modal.style.maxWidth = '750px';
+  modal.style.maxHeight = '90vh';
+  modal.style.overflowY = 'auto';
+
+  modal.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center;">' +
+    '<h3>Edit Pengajuan Guru: ' + escapeHtml(s.title) + '</h3>' +
+    '<button class="btn btn-secondary btn-sm" id="btnCloseEditSub">✕</button>' +
+    '</div>';
+
+  modal.querySelector('#btnCloseEditSub').onclick = function () {
+    document.body.removeChild(backdrop);
+  };
+
+  var form = document.createElement('form');
+  form.style.marginTop = '1rem';
+
+  form.appendChild(createFormField('sub_title', 'Nama Aplikasi', 'text', '', true));
+  form.querySelector('#in_sub_title').value = s.title;
+
+  form.appendChild(createFormField('sub_short', 'Ringkasan Singkat', 'text', '', true));
+  form.querySelector('#in_sub_short').value = s.shortDescription;
+
+  form.appendChild(createFormField('sub_desc', 'Deskripsi Lengkap', 'textarea', '', true));
+  form.querySelector('#in_sub_desc').value = s.description;
+
+  form.appendChild(createFormField('sub_obj', 'Tujuan Pembelajaran', 'textarea', '', false));
+  form.querySelector('#in_sub_obj').value = s.learningObjective || '';
+
+  form.appendChild(createFormField('sub_url', 'URL Aplikasi (Wajib HTTPS)', 'url', '', true, 'Perbaiki tautan di sini jika tautan awal dari guru bermasalah.'));
+  form.querySelector('#in_sub_url').value = s.targetUrl;
+
+  form.appendChild(createThumbnailUploadField('sub_thumb', 'Gambar Sampul / Screenshot', s.thumbnailUrl || ''));
+
+  form.appendChild(createFormField('sub_dev', 'Nama Lengkap Guru', 'text', '', true));
+  form.querySelector('#in_sub_dev').value = s.creatorName;
+
+  form.appendChild(createFormField('sub_tags', 'Kata Kunci (Tags)', 'text', '', false));
+  form.querySelector('#in_sub_tags').value = (s.tags || []).join(', ');
+
+  var btnSave = document.createElement('button');
+  btnSave.type = 'submit';
+  btnSave.className = 'btn btn-primary btn-sm';
+  btnSave.style.marginTop = '1rem';
+  btnSave.textContent = 'Simpan Perubahan Pengajuan';
+  form.appendChild(btnSave);
+
+  form.onsubmit = function (e) {
+    e.preventDefault();
+    btnSave.disabled = true;
+    btnSave.textContent = 'Menyimpan...';
+
+    var payload = {
+      submissionId: s.submissionId,
+      title: form.querySelector('#in_sub_title').value.trim(),
+      shortDescription: form.querySelector('#in_sub_short').value.trim(),
+      description: form.querySelector('#in_sub_desc').value.trim(),
+      learningObjective: form.querySelector('#in_sub_obj').value.trim(),
+      targetUrl: form.querySelector('#in_sub_url').value.trim(),
+      thumbnailUrl: form.querySelector('#in_sub_thumb').value.trim(),
+      creatorName: form.querySelector('#in_sub_dev').value.trim(),
+      tags: form.querySelector('#in_sub_tags').value.trim(),
+      subjectIds: s.subjectIds,
+      gradeIds: s.gradeIds,
+      categoryId: s.category ? s.category.id : ''
+    };
+
+    callApi('api_adminUpdateSubmission', payload).then(function (res) {
+      showToast(res.message || 'Perubahan pengajuan tersimpan.', 'success');
+      document.body.removeChild(backdrop);
+      if (onSuccess) onSuccess();
+    }).catch(function (err) {
+      btnSave.disabled = false;
+      btnSave.textContent = 'Simpan Perubahan Pengajuan';
+      showToast(err.message || 'Gagal menyimpan pengajuan.', 'error');
+    });
+  };
+
+  modal.appendChild(form);
+  backdrop.appendChild(modal);
+  document.body.appendChild(backdrop);
+}
+
+function showVerificationChecklistModal(title) {
+  return new Promise(function (resolve) {
+    var backdrop = document.createElement('div');
+    backdrop.className = 'modal-backdrop';
+
+    var modal = document.createElement('div');
+    modal.className = 'modal';
+    modal.style.maxWidth = '520px';
+
+    modal.innerHTML = '<h3>Daftar Periksa Verifikasi Kelayakan</h3>' +
+      '<p class="muted small">Pastikan poin kelayakan di bawah ini terpenuhi sebelum memberikan lencana <strong>✔ Terverifikasi</strong> pada aplikasi: <br><strong>' + escapeHtml(title) + '</strong></p>' +
+      '<div style="display:flex;flex-direction:column;gap:.75rem;margin:1.25rem 0;" id="chkListWrap">' +
+      '<label class="consent"><input type="checkbox" class="chk-item"> <span>Tautan web HTTPS sudah dibuka, berfungsi normal, dan dapat dimainkan/diakses siswa.</span></label>' +
+      '<label class="consent"><input type="checkbox" class="chk-item"> <span>Materi dan tujuan pembelajaran sesuai untuk jenjang Sekolah Dasar (SD).</span></label>' +
+      '<label class="consent"><input type="checkbox" class="chk-item"> <span>Bebas dari konten judi, pornografi, iklan mencurigakan, atau materi berbahaya.</span></label>' +
+      '<label class="consent"><input type="checkbox" class="chk-item"> <span>Identitas nama guru dan sekolah asal valid.</span></label>' +
+      '</div>' +
+      '<div class="actions">' +
+      '<button class="btn btn-secondary btn-sm" id="btnCancelVerify">Batal</button>' +
+      '<button class="btn btn-success btn-sm" id="btnConfirmVerify" disabled>✔ Konfirmasi & Verifikasi</button>' +
+      '</div>';
+
+    var chks = modal.querySelectorAll('.chk-item');
+    var btnConfirm = modal.querySelector('#btnConfirmVerify');
+
+    function checkAll() {
+      var allChecked = true;
+      chks.forEach(function (c) { if (!c.checked) allChecked = false; });
+      btnConfirm.disabled = !allChecked;
+    }
+
+    chks.forEach(function (c) {
+      c.onchange = checkAll;
+    });
+
+    modal.querySelector('#btnCancelVerify').onclick = function () {
+      document.body.removeChild(backdrop);
+      resolve(false);
+    };
+
+    btnConfirm.onclick = function () {
+      document.body.removeChild(backdrop);
+      resolve(true);
+    };
+
+    backdrop.appendChild(modal);
+    document.body.appendChild(backdrop);
+  });
+}
+
+/* ==========================================================================
+   7. MANAJEMEN PENGGUNA ADMIN (SUPERADMIN ONLY)
+   ========================================================================== */
+
+function renderAdminManageAdmins(container) {
+  container.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:1rem;margin-bottom:1.5rem;">' +
+    '<div><h2>Kelola Pengguna Admin</h2><p class="muted">Tambah atau ubah hak akses kurator pengelola Tirtomoyo EduApps.</p></div>' +
+    '<button class="btn btn-primary btn-sm" id="btnOpenAddAdmin">+ Tambah Admin Baru</button>' +
+    '</div>' +
+    '<div id="adminUserTableWrap"><div class="spinner"></div></div>';
+
+  container.querySelector('#btnOpenAddAdmin').onclick = function () {
+    openAdminUserModal(null, function () {
+      loadAdminUsersData();
+    });
+  };
+
+  loadAdminUsersData();
+}
+
+function loadAdminUsersData() {
+  var wrap = document.getElementById('adminUserTableWrap');
+  if (!wrap) return;
+  wrap.innerHTML = '<div class="spinner"></div>';
+
+  callApi('api_superadminListAdmins').then(function (admins) {
+    if (!admins || admins.length === 0) {
+      wrap.innerHTML = '<div class="state"><p class="muted">Belum ada akun admin terdaftar.</p></div>';
+      return;
+    }
+
+    var tbl = document.createElement('div');
+    tbl.className = 'table-wrap';
+    var t = document.createElement('table');
+    t.innerHTML = '<thead><tr><th>Nama Lengkap</th><th>Email Akun</th><th>Role</th><th>Status</th><th>Aksi</th></tr></thead>';
+    var tbody = document.createElement('tbody');
+
+    admins.forEach(function (adm) {
+      var tr = document.createElement('tr');
+      var isSuper = adm.role === 'SUPERADMIN';
+      tr.innerHTML = '<td><strong>' + escapeHtml(adm.name) + '</strong></td>' +
+        '<td><code>' + escapeHtml(adm.email) + '</code></td>' +
+        '<td><span class="status ' + (isSuper ? 'st-APPROVED' : 'st-IN_REVIEW') + '">' + escapeHtml(adm.role) + '</span></td>' +
+        '<td>' + (adm.isActive ? '<span style="color:var(--success);font-weight:600;">Aktif</span>' : '<span style="color:var(--danger);font-weight:600;">Nonaktif</span>') + '</td>' +
+        '<td><div class="actions">' +
+        '<button class="btn btn-secondary btn-sm btn-edit-adm">Edit</button>' +
+        (isSuper ? '' : '<button class="btn btn-danger btn-sm btn-del-adm">Hapus</button>') +
+        '</div></td>';
+
+      tr.querySelector('.btn-edit-adm').onclick = function () {
+        openAdminUserModal(adm, function () { loadAdminUsersData(); });
+      };
+
+      var btnDel = tr.querySelector('.btn-del-adm');
+      if (btnDel) {
+        btnDel.onclick = function () {
+          showConfirmModal('Hapus Akses Admin', 'Yakin menghapus admin ' + adm.email + '?', 'Hapus', true).then(function (ok) {
+            if (ok) {
+              callApi('api_superadminDeleteAdmin', { adminId: adm.adminId }).then(function () {
+                showToast('Admin berhasil dihapus.', 'success');
+                loadAdminUsersData();
+              }).catch(function (e) { showToast(e.message, 'error'); });
+            }
+          });
+        };
+      }
+
+      tbody.appendChild(tr);
+    });
+
+    t.appendChild(tbody);
+    tbl.appendChild(t);
+    wrap.innerHTML = '';
+    wrap.appendChild(tbl);
+  }).catch(function (err) {
+    wrap.innerHTML = '<div class="state error"><p>' + escapeHtml(err.message) + '</p></div>';
+  });
+}
+
+function openAdminUserModal(adm, onSaved) {
+  var backdrop = document.createElement('div');
+  backdrop.className = 'modal-backdrop';
+
+  var modal = document.createElement('div');
+  modal.className = 'modal';
+  modal.style.maxWidth = '460px';
+
+  var isEdit = !!adm;
+  modal.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center;">' +
+    '<h3>' + (isEdit ? 'Ubah Data Admin' : 'Tambah Admin Baru') + '</h3>' +
+    '<button class="btn btn-secondary btn-sm" id="btnCloseAdmModal">✕</button>' +
+    '</div>';
+
+  modal.querySelector('#btnCloseAdmModal').onclick = function () {
+    document.body.removeChild(backdrop);
+  };
+
+  var form = document.createElement('form');
+  form.style.marginTop = '1rem';
+
+  form.appendChild(createFormField('adm_name', 'Nama Lengkap', 'text', 'Nama admin / kurator', true));
+  if (isEdit) form.querySelector('#in_adm_name').value = adm.name;
+
+  form.appendChild(createFormField('adm_email', 'Alamat Email', 'email', 'nama@gmail.com', true));
+  if (isEdit) {
+    var inEmail = form.querySelector('#in_adm_email');
+    inEmail.value = adm.email;
+    inEmail.readOnly = true;
+  }
+
+  form.appendChild(createFormField('adm_pass', isEdit ? 'Ganti Password (Kosongkan bila tidak diubah)' : 'Password Akun', 'password', '••••••••', !isEdit));
+
+  var fRole = document.createElement('div');
+  fRole.className = 'field';
+  fRole.innerHTML = '<label class="label">Role Akses</label>' +
+    '<select id="in_adm_role"><option value="ADMIN">ADMIN (Kurator Aplikasi)</option><option value="SUPERADMIN">SUPERADMIN (Hak Penuh & Kelola Admin)</option></select>';
+  if (isEdit && adm.role === 'SUPERADMIN') fRole.querySelector('#in_adm_role').value = 'SUPERADMIN';
+  form.appendChild(fRole);
+
+  var btnSubmit = document.createElement('button');
+  btnSubmit.type = 'submit';
+  btnSubmit.className = 'btn btn-primary btn-sm';
+  btnSubmit.style.marginTop = '1rem';
+  btnSubmit.textContent = isEdit ? 'Simpan Perubahan' : 'Daftarkan Admin';
+  form.appendChild(btnSubmit);
+
+  form.onsubmit = function (e) {
+    e.preventDefault();
+    btnSubmit.disabled = true;
+    btnSubmit.textContent = 'Memproses...';
+
+    var payload = {
+      name: form.querySelector('#in_adm_name').value.trim(),
+      email: form.querySelector('#in_adm_email').value.trim(),
+      password: form.querySelector('#in_adm_pass').value,
+      role: form.querySelector('#in_adm_role').value
+    };
+
+    callApi('api_superadminSaveAdmin', payload).then(function (res) {
+      showToast(res.message || 'Data admin berhasil disimpan.', 'success');
+      document.body.removeChild(backdrop);
+      if (onSaved) onSaved();
+    }).catch(function (err) {
+      btnSubmit.disabled = false;
+      btnSubmit.textContent = isEdit ? 'Simpan Perubahan' : 'Daftarkan Admin';
+      showToast(err.message || 'Gagal menyimpan admin.', 'error');
+    });
+  };
+
+  modal.appendChild(form);
+  backdrop.appendChild(modal);
+  document.body.appendChild(backdrop);
+}
+
+/* ==========================================================================
+   8. AUDIT LOG & INISIALISASI
+   ========================================================================== */
+
+function renderAdminAudit(container) {
+  container.innerHTML = '<h2>Riwayat Audit Log</h2><p class="muted">Catatan jejak aktivitas admin, persetujuan, dan perubahan status.</p>' +
+    '<div id="admAuditTableWrap"><div class="spinner"></div></div>';
+
+  var wrap = document.getElementById('admAuditTableWrap');
+  callApi('api_adminListAuditLog', { page: 1, pageSize: 50 }).then(function (res) {
+    if (!res.items || res.items.length === 0) {
+      wrap.innerHTML = '<div class="state"><p class="muted">Belum ada catatan audit log.</p></div>';
+      return;
+    }
+
+    var tbl = document.createElement('div');
+    tbl.className = 'table-wrap';
+    var t = document.createElement('table');
+    t.innerHTML = '<thead><tr><th>Waktu</th><th>Aktor</th><th>Aksi</th><th>Target</th><th>Ringkasan</th></tr></thead>';
+    var tbody = document.createElement('tbody');
+
+    res.items.forEach(function (l) {
+      var tr = document.createElement('tr');
+      var targetDisplay = l.targetName && l.targetName !== l.entityId
+        ? '<strong>' + escapeHtml(l.targetName) + '</strong><br><span class="code small">' + escapeHtml(l.entityId) + '</span>'
+        : '<code>' + escapeHtml(l.entityId) + '</code>';
+
+      tr.innerHTML = '<td style="white-space:nowrap;" class="small">' + formatDateId(l.timestamp) + '</td>' +
+        '<td class="small"><code>' + escapeHtml(l.actorId) + '</code></td>' +
+        '<td class="small"><strong>' + escapeHtml(l.action) + '</strong></td>' +
+        '<td class="small">' + escapeHtml(l.entityType) + ':<br>' + targetDisplay + '</td>' +
+        '<td class="small">' + escapeHtml(l.summary) + '</td>';
+      tbody.appendChild(tr);
+    });
+
+    t.appendChild(tbody);
+    tbl.appendChild(t);
+    wrap.innerHTML = '';
+    wrap.appendChild(tbl);
+  }).catch(function (err) {
+    wrap.innerHTML = '<div class="state error"><p>' + escapeHtml(err.message) + '</p></div>';
+  });
+}
+
+document.addEventListener('DOMContentLoaded', function () {
+  initAdminApp();
+});
+  </script>
+</body>
+</html>
