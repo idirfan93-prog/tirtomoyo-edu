@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <title>Admin Panel — Tirtomoyo EduApps</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+  <div class="admin-shell" id="adminShell">
+    <!-- Sidebar Admin -->
+    <aside class="sidebar" id="adminSidebar">
+      <div class="brand">
+        <span class="brand-mark">T</span>
+        <span>EduApps <span style="color:#FDA29B;">Admin</span></span>
+      </div>
+
+      <nav>
+        <button data-tab="dashboard" class="active" onclick="switchAdminTab('dashboard')">
+          <span>📊 Dashboard</span>
+        </button>
+        <button data-tab="submissions" onclick="switchAdminTab('submissions')">
+          <span>📥 Pengajuan</span>
+          <span id="badgeSubCount" class="pill-count" style="display:none;"></span>
+        </button>
+        <button data-tab="apps" onclick="switchAdminTab('apps')">
+          <span>📱 Katalog Aplikasi</span>
+        </button>
+        <button data-tab="audit" onclick="switchAdminTab('audit')">
+          <span>📜 Audit Log</span>
+        </button>
+        <button data-tab="manage_admins" id="btnTabManageAdmins" style="display:none;" onclick="switchAdminTab('manage_admins')">
+          <span>👥 Kelola Admin</span>
+        </button>
+      </nav>
+
+      <div class="who">
+        <span class="muted small" style="color:#A9BCD6;display:block;">Login Akun:</span>
+        <strong id="adminWho" style="word-break:break-all;">-</strong>
+        <div id="adminRoleBadge" style="margin-top:.35rem;"></div>
+        <button class="btn btn-secondary btn-sm" id="btnAdminLogout" style="margin-top:.75rem;width:100%;display:none;background:rgba(255,255,255,.1);color:#fff;border-color:rgba(255,255,255,.2);" onclick="adminLogout()">Keluar (Logout)</button>
+        <p style="margin-top:1rem;">
+          <a href="index.html" style="color:#D0DCEC;text-decoration:none;" class="small">← Kembali ke Portal Publik</a>
+        </p>
+      </div>
+    </aside>
+
+    <!-- Konten Utama Admin -->
+    <main class="admin-main" id="adminContent">
+      <div style="padding: 3rem 1rem; text-align: center;">
+        <div class="spinner"></div>
+        <p class="muted">Memuat panel admin...</p>
+      </div>
+    </main>
+  </div>
+
+  <script>
+/* ==========================================================================
+   1. CLIENT UTILITIES & FETCH API RUNNER
+   ========================================================================== */
+
+var API_URL = 'https://script.google.com/macros/s/AKfycbyjAmofT2d-6T3uF2pfQ6WhD6eDzi5mz5tMsedp1AoiVTfoJ3_Hb2wHAV9asHmvKi7vZQ/exec';
+
+var ADMIN_STATE = {
+  token: localStorage.getItem('eduapps_admin_token') || null,
+  session: null,
+  activeTab: 'dashboard',
+  submissionsPage: 1,
+  submissionsFilter: '',
+  appsPage: 1,
+  appsFilter: '',
+  categories: null
+};
+
+function callApi(functionName, payload) {
+  var finalPayload = payload || {};
+  if (ADMIN_STATE && ADMIN_STATE.token) {
+    if (typeof finalPayload === 'object' && finalPayload !== null && !Array.isArray(finalPayload)) {
+      if (!finalPayload.token) finalPayload.token = ADMIN_STATE.token;
+    }
+  }
+
+  return fetch(API_URL, {
+    method: 'POST',
+    body: JSON.stringify({
+      action: functionName,
+      payload: finalPayload
+    })
+  })
+  .then(function (res) {
+    if (!res.ok) throw new Error('HTTP Error: ' + res.status);
+    return res.json();
+  })
+  .then(function (response) {
+    if (response && response.ok === true) {
+      return response.data;
+    } else {
+      var err = (response && response.error) ? response.error : {
+        code: 'INTERNAL_ERROR',
+        message: 'Terjadi kesalahan sistem.'
+      };
+      throw err;
+    }
+  })
+  .catch(function (err) {
+    console.error('API Error:', err);
+    throw (err.code ? err : { code: 'NETWORK_ERROR', message: err.message || 'Gagal terhubung ke database server.' });
+  });
+}
+
+function escapeHtml(str) {
+  if (str === null || str === undefined) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function formatDateId(isoStr) {
+  if (!isoStr) return '-';
+  try {
+    var d = new Date(isoStr);
+    if (isNaN(d.getTime())) return String(isoStr);
+    return d.toLocaleDateString('id-ID', {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric'
+    });
+  } catch (e) {
+    return String(isoStr);
+  }
+}
+
+function showToast(message, type) {
+  var wrap = document.getElementById('toastWrap');
+  if (!wrap) {
+    wrap = document.createElement('div');
+    wrap.id = 'toastWrap';
+    wrap.className = 'toast-wrap';
+    document.body.appendChild(wrap);
+  }
+  var toast = document.createElement('div');
+  toast.className = 'toast ' + (type === 'error' ? 'error' : type === 'success' ? 'success' : '');
+  toast.textContent = message;
+  wrap.appendChild(toast);
+  setTimeout(function () {
+    if (toast.parentNode) toast.parentNode.removeChild(toast);
+  }, 4000);
+}
+
+function showConfirmModal(title, text, confirmBtnText, isDanger) {
+  return new Promise(function (resolve) {
+    var backdrop = document.createElement('div');
+    backdrop.className = 'modal-backdrop';
+
+    var modal = document.createElement('div');
+    modal.className = 'modal';
+
+    var h = document.createElement('h3');
+    h.textContent = title;
+    var p = document.createElement('p');
+    p.textContent = text;
+    p.className = 'muted small';
+
+    var actions = document.createElement('div');
+    actions.className = 'actions';
+
+    var btnCancel = document.createElement('button');
+    btnCancel.className = 'btn btn-secondary btn-sm';
+    btnCancel.textContent = 'Batal';
+    btnCancel.onclick = function () {
+      document.body.removeChild(backdrop);
+      resolve(false);
+    };
+
+    var btnConfirm = document.createElement('button');
+    btnConfirm.className = 'btn btn-sm ' + (isDanger ? 'btn-danger' : 'btn-primary');
+    btnConfirm.textContent = confirmBtnText || 'Lanjutkan';
+    btnConfirm.onclick = function () {
+      document.body.removeChild(backdrop);
+      resolve(true);
+    };
+
+    actions.appendChild(btnCancel);
+    actions.appendChild(btnConfirm);
+    modal.appendChild(h);
+    modal.appendChild(p);
+    modal.appendChild(actions);
+    backdrop.appendChild(modal);
+    document.body.appendChild(backdrop);
+  });
+}
+
+function showPromptModal(title, label, placeholder, confirmBtnText, minLength) {
+  return new Promise(function (resolve) {
+    var backdrop = document.createElement('div');
+    backdrop.className = 'modal-backdrop';
+
+    var modal = document.createElement('div');
+    modal.className = 'modal';
+
+    var h = document.createElement('h3');
+    h.textContent = title;
+
+    var field = document.createElement('div');
+    field.className = 'field';
+    field.style.marginTop = '1rem';
+    field.innerHTML = '<label class="label">' + escapeHtml(label) + '</label>';
+
+    var input = document.createElement('textarea');
+    input.rows = 3;
+    input.placeholder = placeholder || '';
+    field.appendChild(input);
+
+    var err = document.createElement('div');
+    err.className = 'field-error';
+    err.style.display = 'none';
+    field.appendChild(err);
+
+    var actions = document.createElement('div');
+    actions.className = 'actions';
+
+    var btnCancel = document.createElement('button');
+    btnCancel.className = 'btn btn-secondary btn-sm';
+    btnCancel.textContent = 'Batal';
+    btnCancel.onclick = function () {
+      document.body.removeChild(backdrop);
+      resolve(null);
+    };
+
+    var btnConfirm = document.createElement('button');
+    btnConfirm.className = 'btn btn-danger btn-sm';
+    btnConfirm.textContent = confirmBtnText || 'Kirim';
+    btnConfirm.onclick = function () {
+      var val = input.value.trim();
+      if (minLength && val.length < minLength) {
+        err.textContent = 'Harap isi minimal ' + minLength + ' karakter.';
+        err.style.display = 'block';
+        return;
+      }
+      document.body.removeChild(backdrop);
+      resolve(val);
+    };
+
+    actions.appendChild(btnCancel);
+    actions.appendChild(btnConfirm);
+    modal.appendChild(h);
+    modal.appendChild(field);
+    modal.appendChild(actions);
+    backdrop.appendChild(modal);
+    document.body.appendChild(backdrop);
+    input.focus();
+  });
+}
+
+function createFormField(name, labelText, type, placeholder, required, helpText) {
+  var div = document.createElement('div');
+  div.className = 'field';
+  div.id = 'field_' + name;
+
+  var lbl = document.createElement('label');
+  lbl.htmlFor = 'in_' + name;
+  lbl.className = 'label';
+  lbl.innerHTML = escapeHtml(labelText) + (required ? ' <span class="req">*</span>' : '');
+  div.appendChild(lbl);
+
+  var input;
+  if (type === 'textarea') {
+    input = document.createElement('textarea');
+    input.rows = 3;
+  } else {
+    input = document.createElement('input');
+    input.type = type;
+  }
+  input.id = 'in_' + name;
+  input.name = name;
+  input.placeholder = placeholder || '';
+  div.appendChild(input);
+
+  if (helpText) {
+    var help = document.createElement('div');
+    help.className = 'help';
+    help.textContent = helpText;
+    div.appendChild(help);
+  }
+
+  var err = document.createElement('div');
+  err.className = 'field-error';
+  err.style.display = 'none';
+  div.appendChild(err);
+
+  return div;
+}
+
+function createThumbnailUploadField(name, labelText, initialUrl) {
+  var div = document.createElement('div');
+  div.className = 'field';
+  div.id = 'field_' + name;
+
+  var lbl = document.createElement('label');
+  lbl.className = 'label';
+  lbl.textContent = labelText || 'Gambar Sampul / Tangkapan Layar (Opsional)';
+  div.appendChild(lbl);
+
+  var urlInput = document.createElement('input');
+  urlInput.type = 'url';
+  urlInput.id = 'in_' + name;
+  urlInput.name = name;
+  urlInput.placeholder = 'https://... (otomatis terisi saat unggah gambar, atau tempel URL manual)';
+  urlInput.value = initialUrl || '';
+
+  var uploadBox = document.createElement('div');
+  uploadBox.style.cssText = 'border: 1.5px dashed #D0D5DD; border-radius: 10px; padding: 1rem; background: #F9FAFB; display: flex; flex-direction: column; gap: .75rem; margin-bottom: .5rem;';
+
+  var topRow = document.createElement('div');
+  topRow.style.cssText = 'display: flex; flex-wrap: wrap; gap: .75rem; align-items: center;';
+
+  var fileInput = document.createElement('input');
+  fileInput.type = 'file';
+  fileInput.accept = 'image/png,image/jpeg,image/webp';
+  fileInput.style.display = 'none';
+
+  var btnChoose = document.createElement('button');
+  btnChoose.type = 'button';
+  btnChoose.className = 'btn btn-secondary btn-sm';
+  btnChoose.innerHTML = '📁 Pilih & Unggah Gambar dari Perangkat';
+  btnChoose.onclick = function () { fileInput.click(); };
+
+  var statusSpan = document.createElement('span');
+  statusSpan.className = 'small muted';
+  statusSpan.textContent = 'Format JPG/PNG/WEBP (otomatis disimpan ke Google Drive).';
+
+  topRow.appendChild(btnChoose);
+  topRow.appendChild(statusSpan);
+  uploadBox.appendChild(topRow);
+  uploadBox.appendChild(fileInput);
+
+  var previewWrap = document.createElement('div');
+  previewWrap.style.cssText = 'display: ' + (initialUrl ? 'flex' : 'none') + '; align-items: center; gap: .75rem; background: #fff; padding: .5rem; border-radius: 8px; border: 1px solid #EAECF0;';
+  var previewImg = document.createElement('img');
+  previewImg.style.cssText = 'width: 112px; height: 63px; object-fit: cover; border-radius: 6px; background: #EEF2F6; flex-shrink: 0;';
+  if (initialUrl) previewImg.src = initialUrl;
+
+  var previewInfo = document.createElement('div');
+  previewInfo.style.cssText = 'flex: 1; min-width: 0; font-size: .82rem; color: #475467; overflow: hidden; text-overflow: ellipsis;';
+  previewInfo.textContent = initialUrl ? 'Gambar sampul aktif' : '';
+
+  var btnRemove = document.createElement('button');
+  btnRemove.type = 'button';
+  btnRemove.className = 'btn btn-secondary btn-sm';
+  btnRemove.style.padding = '.25rem .6rem';
+  btnRemove.textContent = 'Hapus';
+  btnRemove.onclick = function () {
+    urlInput.value = '';
+    fileInput.value = '';
+    previewWrap.style.display = 'none';
+    statusSpan.textContent = 'Gambar dihapus.';
+  };
+
+  previewWrap.appendChild(previewImg);
+  previewWrap.appendChild(previewInfo);
+  previewWrap.appendChild(btnRemove);
+  uploadBox.appendChild(previewWrap);
+
+  fileInput.onchange = function () {
+    var file = fileInput.files && fileInput.files[0];
+    if (!file) return;
+
+    btnChoose.disabled = true;
+    btnChoose.textContent = '⏳ Mengunggah ke Drive...';
+    statusSpan.textContent = 'Memproses & mengunggah "' + file.name + '"...';
+
+    compressImageFile_(file, 1280, 0.82).then(function (result) {
+      return callApi('api_uploadThumbnail', {
+        base64Data: result.dataUrl,
+        mimeType: result.mimeType,
+        fileName: file.name
+      });
+    }).then(function (res) {
+      btnChoose.disabled = false;
+      btnChoose.innerHTML = '📁 Ganti Gambar';
+      urlInput.value = res.thumbnailUrl;
+      previewImg.src = res.thumbnailUrl;
+      previewInfo.innerHTML = '<strong style="color:#027A48;">✓ Berhasil diunggah ke Google Drive</strong><br><span class="muted">' + escapeHtml(file.name) + '</span>';
+      previewWrap.style.display = 'flex';
+      statusSpan.textContent = 'Tautan thumbnail Drive otomatis terisi.';
+      showToast('Gambar sampul berhasil diunggah ke Google Drive!', 'success');
+    }).catch(function (err) {
+      btnChoose.disabled = false;
+      btnChoose.innerHTML = '📁 Pilih & Unggah Gambar dari Perangkat';
+      statusSpan.textContent = 'Gagal mengunggah: ' + (err.message || 'Terjadi kesalahan.');
+      showToast(err.message || 'Gagal mengunggah gambar ke Google Drive.', 'error');
+    });
+  };
+
+  urlInput.oninput = function () {
+    var v = urlInput.value.trim();
+    if (v.indexOf('https://') === 0) {
+      previewImg.src = v;
+      previewInfo.textContent = v;
+      previewWrap.style.display = 'flex';
+    } else if (!v) {
+      previewWrap.style.display = 'none';
+    }
+  };
+
+  div.appendChild(uploadBox);
+  div.appendChild(urlInput);
+
+  var help = document.createElement('div');
+  help.className = 'help';
+  help.textContent = 'Unggah tangkapan layar aplikasi (rasio 16:9 disarankan) atau tempel URL gambar secara langsung.';
+  div.appendChild(help);
+
+  var err = document.createElement('div');
+  err.className = 'field-error';
+  err.style.display = 'none';
+  div.appendChild(err);
+
+  return div;
+}
+
+function compressImageFile_(file, maxWidth, quality) {
+  return new Promise(function (resolve, reject) {
+    var reader = new FileReader();
+    reader.onerror = function () { reject(new Error('Gagal membaca file gambar.')); };
+    reader.onload = function (e) {
+      var img = new Image();
+      img.onerror = function () { reject(new Error('File bukan gambar yang valid.')); };
+      img.onload = function () {
+        var w = img.width;
+        var h = img.height;
+        if (w > maxWidth) {
+          h = Math.round((h * maxWidth) / w);
+          w = maxWidth;
+        }
+        var canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        var ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, w, h);
+        var outMime = (file.type === 'image/png') ? 'image/png' : 'image/jpeg';
+        var dataUrl = canvas.toDataURL(outMime, quality || 0.82);
+        resolve({ dataUrl: dataUrl, mimeType: outMime });
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+/* ==========================================================================
+   2. OTENTIKASI & MANAJEMEN SESI ADMIN
+   ========================================================================== */
+
+function initAdminApp() {
+  if (!ADMIN_STATE.token) {
+    renderAdminLoginForm();
+    return;
+  }
+  loadAdminSession();
+}
+
+function loadAdminSession() {
+  var sidebar = document.getElementById('adminSidebar');
+  if (sidebar) sidebar.style.display = '';
+  var shell = document.getElementById('adminShell');
+  if (shell) {
+    shell.style.display = '';
+    shell.style.align
