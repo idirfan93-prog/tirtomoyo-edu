@@ -399,8 +399,10 @@ function handlePublicRoute() {
   } else if (hash.indexOf('#/detail/') === 0) {
     var slugOrId = hash.replace('#/detail/', '').trim();
     renderDetailPage(content, slugOrId);
+  } else if (hash.indexOf('#/play/') === 0) {
+    var slugOrId = hash.replace('#/play/', '').trim();
+    renderPlayPage(content, slugOrId);
   } else if (hash === '#/ajukan') {
-    renderSubmissionPage(content);
   } else if (hash === '#/tentang') {
     renderAboutPage(content);
   } else {
@@ -951,12 +953,20 @@ function renderDetailPage(container, slugOrId) {
     actPanel.className = 'panel';
 
     var launchBtn = document.createElement('a');
-    launchBtn.href = app.targetUrl;
-    launchBtn.target = '_blank';
-    launchBtn.rel = 'noopener noreferrer';
+    launchBtn.href = '#/play/' + encodeURIComponent(app.slug || app.appId);
     launchBtn.className = 'btn btn-primary launch';
-    launchBtn.innerHTML = '🚀 Buka Aplikasi Sekarang';
+    launchBtn.innerHTML = '🎮 Mainkan di Portal Sekarang';
     actPanel.appendChild(launchBtn);
+
+    var externalBtn = document.createElement('a');
+    externalBtn.href = app.targetUrl;
+    externalBtn.target = '_blank';
+    externalBtn.rel = 'noopener noreferrer';
+    externalBtn.className = 'btn btn-secondary btn-sm';
+    externalBtn.style.width = '100%';
+    externalBtn.style.marginTop = '.5rem';
+    externalBtn.innerHTML = '↗ Buka di Tab Terpisah';
+    actPanel.appendChild(externalBtn);
 
     // Tombol Salin Tautan Berbagi langsung dari browser
     var shareBtn = document.createElement('button');
@@ -1013,6 +1023,84 @@ function renderDetailPage(container, slugOrId) {
   });
 }
 
+/* ---------- 3B. HALAMAN PEMUTAR APLIKASI (IN-APP EMBED PLAYER) ---------- */
+
+function renderPlayPage(container, slugOrId) {
+  container.innerHTML = '<div class="container" style="padding:3rem 1rem;text-align:center;"><div class="spinner"></div><p class="muted">Menyiapkan ruang aplikasi pembelajaran...</p></div>';
+
+  callApi('api_getPublicAppDetail', { slug: slugOrId, appId: slugOrId }).then(function (app) {
+    container.innerHTML = '';
+
+    // Bilah Kontrol Atas (Header Player)
+    var topBar = document.createElement('div');
+    topBar.style.cssText = 'background:var(--navy);color:#fff;padding:.65rem 1rem;display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap;';
+
+    var leftCol = document.createElement('div');
+    leftCol.style.cssText = 'display:flex;align-items:center;gap:.75rem;';
+
+    var btnBack = document.createElement('a');
+    btnBack.href = '#/detail/' + encodeURIComponent(app.slug || app.appId);
+    btnBack.className = 'btn btn-secondary btn-sm';
+    btnBack.style.cssText = 'background:rgba(255,255,255,.15);color:#fff;border-color:rgba(255,255,255,.3);text-decoration:none;';
+    btnBack.innerHTML = '← Kembali';
+
+    var titleSpan = document.createElement('span');
+    titleSpan.style.cssText = 'font-weight:700;font-size:1.05rem;';
+    titleSpan.textContent = app.title;
+
+    leftCol.appendChild(btnBack);
+    leftCol.appendChild(titleSpan);
+
+    var rightCol = document.createElement('div');
+    rightCol.style.cssText = 'display:flex;align-items:center;gap:.5rem;';
+
+    var btnFull = document.createElement('button');
+    btnFull.className = 'btn btn-secondary btn-sm';
+    btnFull.style.cssText = 'background:rgba(255,255,255,.15);color:#fff;border-color:rgba(255,255,255,.3);';
+    btnFull.innerHTML = '⛶ Layar Penuh';
+
+    var btnExt = document.createElement('a');
+    btnExt.href = app.targetUrl;
+    btnExt.target = '_blank';
+    btnExt.rel = 'noopener noreferrer';
+    btnExt.className = 'btn btn-secondary btn-sm';
+    btnExt.style.cssText = 'background:rgba(255,255,255,.15);color:#fff;border-color:rgba(255,255,255,.3);text-decoration:none;';
+    btnExt.innerHTML = '↗ Buka Asli';
+
+    rightCol.appendChild(btnFull);
+    rightCol.appendChild(btnExt);
+
+    topBar.appendChild(leftCol);
+    topBar.appendChild(rightCol);
+    container.appendChild(topBar);
+
+    // Wadah Iframe Responsif
+    var frameWrap = document.createElement('div');
+    frameWrap.id = 'playerFrameWrap';
+    frameWrap.style.cssText = 'width:100%;height:calc(100vh - 120px);min-height:560px;background:#000;position:relative;';
+
+    var iframe = document.createElement('iframe');
+    iframe.src = app.targetUrl;
+    iframe.title = app.title;
+    iframe.allow = 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen';
+    iframe.style.cssText = 'width:100%;height:100%;border:none;display:block;';
+
+    btnFull.onclick = function () {
+      if (!document.fullscreenElement) {
+        if (frameWrap.requestFullscreen) frameWrap.requestFullscreen();
+        else if (frameWrap.webkitRequestFullscreen) frameWrap.webkitRequestFullscreen();
+      } else {
+        if (document.exitFullscreen) document.exitFullscreen();
+      }
+    };
+
+    frameWrap.appendChild(iframe);
+    container.appendChild(frameWrap);
+  }).catch(function (err) {
+    container.innerHTML = '<div class="container" style="padding:2.5rem 1rem;"><div class="state error"><h3>Gagal Memuat Player</h3><p>' + escapeHtml(err.message) + '</p><a href="#/katalog" class="btn btn-primary btn-sm">Kembali ke Katalog</a></div></div>';
+  });
+}
+    
 /* ---------- 4. HALAMAN TENTANG ---------- */
 
 function renderAboutPage(container) {
