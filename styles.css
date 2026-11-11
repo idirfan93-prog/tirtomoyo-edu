@@ -594,3 +594,163 @@ body.player-mode #publicContent {
   display: flex;
   flex-direction: column;
 }
+
+/* ---------- 1. GAYA MODAL LOGIN & NOTIFIKASI EDUKATIF ---------- */
+.auth-modal {
+  max-width: 440px !important;
+  border-radius: 18px !important;
+  padding: 1.75rem !important;
+}
+.auth-modal-header {
+  text-align: center;
+  margin-bottom: 1.25rem;
+}
+.auth-modal-header h2 {
+  font-size: 1.35rem;
+  margin: .35rem 0 .2rem;
+}
+.alert-educational {
+  background: #FFF6ED;
+  border: 1.5px solid #F9DBAF;
+  border-radius: 10px;
+  padding: .85rem 1rem;
+  color: #7A271A;
+  font-size: .85rem;
+  line-height: 1.5;
+  margin-bottom: 1rem;
+}
+.alert-educational strong {
+  color: #C4320A;
+}
+
+/* ---------- 2. DASBOR GURU & STATISTIK PRIBADI ---------- */
+.teacher-dash-wrap {
+  padding: 1.5rem 0 3rem;
+}
+.teacher-profile-card {
+  background: linear-gradient(135deg, var(--navy), #1D4373);
+  color: #fff;
+  border-radius: var(--radius-card);
+  padding: 1.5rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 1rem;
+  box-shadow: 0 4px 16px rgba(23, 54, 93, .15);
+}
+.teacher-profile-card h1 {
+  color: #fff;
+  font-size: 1.45rem;
+  margin: 0 0 .25rem;
+}
+.teacher-profile-card .teacher-meta {
+  color: #D0DCEC;
+  font-size: .88rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: .75rem;
+}
+.teacher-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1rem;
+  margin: 1.25rem 0;
+}
+@media (max-width: 640px) {
+  .teacher-stat-grid {
+    grid-template-columns: 1fr;
+  }
+}
+.teacher-stat-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  padding: 1rem 1.25rem;
+  display: flex;
+  align-items: center;
+  gap: .85rem;
+}
+.teacher-stat-card .icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  background: #EEF4FF;
+  color: var(--blue);
+  font-size: 1.3rem;
+  display: grid;
+  place-items: center;
+}
+.teacher-stat-card .num {
+  font-size: 1.4rem;
+  font-weight: 800;
+  color: var(--navy);
+  line-height: 1.1;
+}
+.teacher-stat-card .lbl {
+  font-size: .8rem;
+  color: var(--muted);
+}
+
+/* ---------- 3. KARTU APLIKASI DASBOR GURU ---------- */
+.teacher-app-item {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  padding: 1rem;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: .85rem;
+  transition: transform .15s, box-shadow .15s;
+}
+.teacher-app-item:hover {
+  box-shadow: 0 4px 14px rgba(16, 24, 40, .06);
+}
+.teacher-app-thumb {
+  width: 120px;
+  height: 68px;
+  border-radius: 8px;
+  background: #EEF2F6;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+.teacher-app-info {
+  flex: 1;
+  min-width: 0;
+}
+.teacher-app-info h3 {
+  font-size: 1rem;
+  margin: 0 0 .25rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.teacher-app-actions {
+  display: flex;
+  gap: .45rem;
+  flex-wrap: wrap;
+}
+@media (max-width: 760px) {
+  .teacher-app-item {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .teacher-app-thumb {
+    width: 100%;
+    height: 140px;
+  }
+  .teacher-app-actions {
+    margin-top: .5rem;
+  }
+  .teacher-app-actions .btn {
+    flex: 1;
+  }
+}
+
+/* ---------- 4. FORM KEAMANAN GANTI PASSWORD ---------- */
+.profile-security-card {
+  border-left: 4px solid var(--blue);
+  background: var(--surface);
+  margin-top: 1.5rem;
+}
