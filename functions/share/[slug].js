@@ -82,11 +82,11 @@ export async function onRequest(context) {
 }
 
 function escapeXml(unsafe) {
-  if (!unsafe) return '';
+  if (!unsafe) return "";
   return String(unsafe)
-    .replace(/&/g, '&')
-    .replace(/</g, '<')
-    .replace(/>/g, '>')
-    .replace(/"/g, '"')
-    .replace(/'/g, ''');
+    .replace(/&/g, "&")
+    .replace(/</g, "<")
+    .replace(/>/g, ">")
+    .replace(/"/g, """)
+    .replace(/'/g, "'");
 }
