@@ -1261,9 +1261,12 @@ function createAppCard(app) {
   leftWrap.className = 'thumb-badges-left';
 
   if (app.subjectLabels && app.subjectLabels.length > 0) {
+    var rawSub = app.subjectLabels[0];
+    var shortSub = rawSub.replace(/^Pendidikan\s+/i, '');
     var sBadge = document.createElement('span');
     sBadge.className = 'thumb-badge subject';
-    sBadge.textContent = app.subjectLabels[0];
+    sBadge.textContent = shortSub;
+    sBadge.title = rawSub;
     leftWrap.appendChild(sBadge);
 
     if (app.subjectLabels.length > 1) {
