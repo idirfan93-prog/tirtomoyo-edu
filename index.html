@@ -122,11 +122,9 @@ function formatDateId(isoStr) {
 
 function normalizeScriptUrl(url) {
   if (!url) return '';
-  var trimmed = String(url).trim();
-  if (/^https?:\/\/script\.google\.com(?:\/(?!a\/)|$)/i.test(trimmed)) {
-    return trimmed.replace(/^https?:\/\/script\.google\.com\/?/i, 'https://script.google.com/a/~/');
-  }
-  return trimmed;
+  var s = String(url).trim();
+  // Menyeragamkan /macros/, /a/macros/, /a/domain.com/macros/, atau /u/0/macros/ menjadi /a/~/macros/
+  return s.replace(/^https?:\/\/script\.google\.com\/(?:a\/(?:(?!~\/)[^\/]+\/)?|u\/\d+\/)?macros\//i, 'https://script.google.com/a/~/macros/');
 }
 
 function showToast(message, type) {
