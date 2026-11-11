@@ -185,10 +185,9 @@ function createThumbnailUploadField(name, labelText, initialUrl) {
   div.appendChild(lbl);
 
   var urlInput = document.createElement('input');
-  urlInput.type = 'url';
+  urlInput.type = 'hidden';
   urlInput.id = 'in_' + name;
   urlInput.name = name;
-  urlInput.placeholder = 'https://... (otomatis terisi saat unggah gambar, atau tempel URL manual)';
   urlInput.value = initialUrl || '';
 
   var uploadBox = document.createElement('div');
@@ -275,23 +274,12 @@ function createThumbnailUploadField(name, labelText, initialUrl) {
     });
   };
 
-  urlInput.oninput = function () {
-    var v = urlInput.value.trim();
-    if (v.indexOf('https://') === 0) {
-      previewImg.src = v;
-      previewInfo.textContent = v;
-      previewWrap.style.display = 'flex';
-    } else if (!v) {
-      previewWrap.style.display = 'none';
-    }
-  };
-
   div.appendChild(uploadBox);
   div.appendChild(urlInput);
 
   var help = document.createElement('div');
   help.className = 'help';
-  help.textContent = 'Unggah tangkapan layar aplikasi (rasio 16:9 disarankan) atau tempel URL gambar langsung.';
+  help.textContent = 'Unggah tangkapan layar aplikasi dari perangkat (rasio 16:9 disarankan). Gambar otomatis tersimpan ke Google Drive.';
   div.appendChild(help);
 
   var err = document.createElement('div');
@@ -1490,11 +1478,11 @@ function renderSubmissionPage(container) {
   step3.className = 'wizard-step-content';
   step3.style.display = 'none';
 
-  step3.appendChild(createFormField('creatorName', 'Nama Lengkap Guru Pengembang', 'text', 'Nama beserta gelar...', true, 'Akan ditampilkan di portal sebagai pembuat karya.'));
-
+  var teachersList = (PUBLIC_STATE.categories && PUBLIC_STATE.categories.teachers) ? PUBLIC_STATE.categories.teachers : [];
   var schoolsList = (PUBLIC_STATE.categories && PUBLIC_STATE.categories.schools) ? PUBLIC_STATE.categories.schools : [];
-  step3.appendChild(createSearchableSchoolField('schoolSelect', 'Sekolah Asal', schoolsList));
 
+  step3.appendChild(createSearchableTeacherField('creatorName', 'Nama Lengkap Guru Pengembang', teachersList, schoolsList));
+  step3.appendChild(createSearchableSchoolField('schoolSelect', 'Sekolah Asal', schoolsList));
   step3.appendChild(createFormField('contact', 'Kontak WhatsApp atau Email Pribadi', 'text', '08123456789 / nama@guru.sd.belajar.id', true, 'Hanya untuk koordinasi kurator; TIDAK akan ditampilkan ke publik.'));
   body.appendChild(step3);
 
@@ -1710,6 +1698,134 @@ function renderStep4Summary(form) {
     '<span class="muted">URL Aplikasi:</span><span style="overflow-wrap:anywhere;">' + escapeHtml(url) + '</span>' +
     '<span class="muted">Sampul:</span><span>' + (thumb ? '✓ Gambar telah dilampirkan' : 'Sampul otomatis') + '</span>' +
     '</div>';
+}
+
+function createSearchableTeacherField(name, labelText, teachersList, schoolsList) {
+  var div = document.createElement('div');
+  div.className = 'field';
+  div.id = 'field_' + name;
+
+  var lbl = document.createElement('label');
+  lbl.htmlFor = 'in_' + name;
+  lbl.className = 'label';
+  lbl.innerHTML = escapeHtml(labelText) + ' <span class="req">*</span>';
+  div.appendChild(lbl);
+
+  var wrap = document.createElement('div');
+  wrap.className = 'search-select-wrap';
+
+  var input = document.createElement('input');
+  input.type = 'text';
+  input.id = 'in_' + name;
+  input.name = name;
+  input.placeholder = 'Ketik nama lengkap atau pilih dari daftar guru...';
+  input.autocomplete = 'off';
+  wrap.appendChild(input);
+
+  var dropdown = document.createElement('div');
+  dropdown.className = 'search-select-dropdown';
+  dropdown.style.maxHeight = '240px';
+
+  var listEl = document.createElement('ul');
+  listEl.className = 'search-select-list';
+  dropdown.appendChild(listEl);
+  wrap.appendChild(dropdown);
+  div.appendChild(wrap);
+
+  var autoNote = document.createElement('div');
+  autoNote.className = 'small';
+  autoNote.style.cssText = 'color:var(--success);font-weight:600;margin-top:.35rem;display:none;';
+  autoNote.id = 'teacherAutoFilledNotice';
+  autoNote.innerHTML = '✓ Profil guru ditemukan: Sekolah dan kontak terisi otomatis.';
+  div.appendChild(autoNote);
+
+  var help = document.createElement('div');
+  help.className = 'help';
+  help.textContent = 'Ketik nama Anda. Bila sudah pernah mengajukan aplikasi, pilih nama Anda agar sekolah dan kontak terisi otomatis.';
+  div.appendChild(help);
+
+  var err = document.createElement('div');
+  err.className = 'field-error';
+  err.style.display = 'none';
+  div.appendChild(err);
+
+  function renderTeacherList(q) {
+    listEl.innerHTML = '';
+    var query = (q || '').toLowerCase().trim();
+    if (!query) {
+      dropdown.classList.remove('open');
+      return;
+    }
+
+    var matches = (teachersList || []).filter(function (t) {
+      return (t.name || '').toLowerCase().indexOf(query) !== -1;
+    });
+
+    if (matches.length === 0) {
+      dropdown.classList.remove('open');
+      return;
+    }
+
+    matches.forEach(function (t) {
+      var li = document.createElement('li');
+      li.className = 'search-select-item';
+      li.innerHTML = '<strong>' + escapeHtml(t.name) + '</strong>' +
+        '<span class="item-sub">🏫 ' + escapeHtml(t.schoolName || 'Sekolah Terdaftar') + '</span>';
+
+      li.onclick = function (e) {
+        e.stopPropagation();
+        input.value = t.name;
+        dropdown.classList.remove('open');
+
+        // Isi otomatis kontak
+        var contactEl = document.getElementById('in_contact');
+        if (contactEl && t.contact) {
+          contactEl.value = t.contact;
+        }
+
+        // Isi otomatis sekolah asal
+        if (t.schoolId || t.schoolName) {
+          var inSchoolId = document.getElementById('in_schoolId');
+          var inSchoolName = document.getElementById('in_schoolName');
+          var inSchoolNpsn = document.getElementById('in_schoolNpsn');
+          var trigger = document.getElementById('schoolSelectTrigger');
+
+          if (inSchoolId) inSchoolId.value = t.schoolId || '';
+          if (inSchoolName) inSchoolName.value = t.schoolName || '';
+          if (inSchoolNpsn) inSchoolNpsn.value = t.schoolNpsn || '';
+
+          if (trigger) {
+            trigger.innerHTML = '<span id="in_school_name_display"><strong>' + escapeHtml(t.schoolName) + '</strong>' +
+              (t.schoolNpsn ? ' <small class="muted">(NPSN: ' + escapeHtml(t.schoolNpsn) + ')</small>' : '') +
+              '</span><span style="font-size:.8rem;color:var(--muted);">▼</span>';
+          }
+        }
+
+        autoNote.style.display = 'block';
+        clearFormErrors();
+      };
+      listEl.appendChild(li);
+    });
+
+    dropdown.classList.add('open');
+  }
+
+  input.addEventListener('input', function () {
+    autoNote.style.display = 'none';
+    renderTeacherList(input.value);
+  });
+
+  input.addEventListener('focus', function () {
+    if (input.value.trim()) renderTeacherList(input.value);
+  });
+
+  document.addEventListener('click', function (e) {
+    if (!wrap.contains(e.target)) {
+      dropdown.classList.remove('open');
+    }
+  });
+
+  return div;
 }
 
 function createSearchableSchoolField(name, labelText, schoolsList) {
