@@ -252,11 +252,11 @@ function createThumbnailUploadField(name, labelText, initialUrl) {
     btnChoose.textContent = '⏳ Mengunggah ke Drive...';
     statusSpan.textContent = 'Memproses & mengunggah "' + file.name + '"...';
 
-    compressImageFile_(file, 1280, 0.82).then(function (result) {
+    compressImageFile_(file, 1280, 0.78).then(function (result) {
       return callApi('api_uploadThumbnail', {
         base64Data: result.dataUrl,
         mimeType: result.mimeType,
-        fileName: file.name
+        fileName: result.fileName
       });
     }).then(function (res) {
       btnChoose.disabled = false;
@@ -320,10 +320,14 @@ function compressImageFile_(file, maxWidth, quality) {
         canvas.width = w;
         canvas.height = h;
         var ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fillRect(0, 0, w, h);
         ctx.drawImage(img, 0, 0, w, h);
-        var outMime = (file.type === 'image/png') ? 'image/png' : 'image/jpeg';
-        var dataUrl = canvas.toDataURL(outMime, quality || 0.82);
-        resolve({ dataUrl: dataUrl, mimeType: outMime });
+        var outMime = 'image/jpeg';
+        var dataUrl = canvas.toDataURL(outMime, quality || 0.78);
+        var safeBase = (file.name || 'thumbnail').replace(/\.[^/.]+$/, '').replace(/[^a-zA-Z0-9_-]/g, '_');
+        var cleanFileName = safeBase + '.jpg';
+        resolve({ dataUrl: dataUrl, mimeType: outMime, fileName: cleanFileName });
       };
       img.src = e.target.result;
     };
@@ -352,9 +356,24 @@ var PUBLIC_STATE = {
 
 function initPublicApp() {
   window.addEventListener('hashchange', handlePublicRoute);
-  loadPublicInitialData().then(function () {
+
+  try {
+    var cConf = localStorage.getItem('eduapps_pub_config');
+    var cCats = localStorage.getItem('eduapps_pub_cats');
+    var cHome = localStorage.getItem('eduapps_pub_homedata');
+    if (cConf) PUBLIC_STATE.config = JSON.parse(cConf);
+    if (cCats) PUBLIC_STATE.categories = JSON.parse(cCats);
+    if (cHome) PUBLIC_STATE.homeData = JSON.parse(cHome);
+  } catch (e) {}
+
+  if (PUBLIC_STATE.config && PUBLIC_STATE.categories) {
     handlePublicRoute();
-  });
+    loadPublicInitialData();
+  } else {
+    loadPublicInitialData().then(function () {
+      handlePublicRoute();
+    });
+  }
 }
 
 function loadPublicInitialData() {
@@ -364,9 +383,15 @@ function loadPublicInitialData() {
   ]).then(function (results) {
     PUBLIC_STATE.config = results[0];
     PUBLIC_STATE.categories = results[1];
+    try {
+      localStorage.setItem('eduapps_pub_config', JSON.stringify(results[0]));
+      localStorage.setItem('eduapps_pub_cats', JSON.stringify(results[1]));
+    } catch (e) {}
   }).catch(function (err) {
     console.error('Gagal memuat konfigurasi publik:', err);
-    showToast('Gagal memuat konfigurasi awal portal.', 'error');
+    if (!PUBLIC_STATE.config) {
+      showToast('Gagal memuat konfigurasi awal portal.', 'error');
+    }
   });
 }
 
@@ -428,11 +453,35 @@ function parseHashParams(hash) {
 /* ---------- 1. HALAMAN BERANDA ---------- */
 
 function renderHomePage(container) {
-  container.innerHTML = '<div class="skeleton" style="height:350px;margin-bottom:2rem;"></div><div class="skeleton" style="height:250px;"></div>';
+  if (PUBLIC_STATE.homeData) {
+    buildHomePageDOM_(container, PUBLIC_STATE.homeData);
+  } else {
+    container.innerHTML = '<div class="skeleton" style="height:350px;margin-bottom:2rem;"></div><div class="skeleton" style="height:250px;"></div>';
+  }
 
   callApi('api_getHomeData').then(function (data) {
+    var isFirstRender = !PUBLIC_STATE.homeData;
     PUBLIC_STATE.homeData = data;
-    container.innerHTML = '';
+    try {
+      localStorage.setItem('eduapps_pub_homedata', JSON.stringify(data));
+    } catch (e) {}
+
+    var hash = window.location.hash || '#/';
+    if (hash === '#/' || hash === '') {
+      var isTyping = document.querySelector('.hero-search-box input:focus');
+      if (isFirstRender || !isTyping) {
+        buildHomePageDOM_(container, data);
+      }
+    }
+  }).catch(function (err) {
+    if (!PUBLIC_STATE.homeData) {
+      container.innerHTML = '<div class="container" style="padding:2rem 1rem;"><div class="state error"><h3>Gagal Memuat Beranda</h3><p>' + escapeHtml(err.message) + '</p></div></div>';
+    }
+  });
+}
+
+function buildHomePageDOM_(container, data) {
+  container.innerHTML = '';
 
     var hero = document.createElement('section');
     hero.className = 'hero';
@@ -670,9 +719,6 @@ function renderHomePage(container) {
     mainContainer.appendChild(ctaSec);
 
     container.appendChild(mainContainer);
-  }).catch(function (err) {
-    container.innerHTML = '<div class="container" style="padding:2rem 1rem;"><div class="state error"><h3>Gagal Memuat Beranda</h3><p>' + escapeHtml(err.message) + '</p></div></div>';
-  });
 }
 
 /* ---------- 2. HALAMAN KATALOG ---------- */
