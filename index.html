@@ -5,7 +5,8 @@
   <title>Tirtomoyo EduApps — Portal Aplikasi Pembelajaran SD Tirtomoyo</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="Portal etalase dan peluncur aplikasi pembelajaran SD karya guru di Kecamatan Tirtomoyo.">
-  <link rel="stylesheet" href="styles.css">
+    <link rel="icon" type="image/png" href="favicon.png">
+    <link rel="stylesheet" href="styles.css">
 </head>
 <body>
 
@@ -2099,7 +2100,7 @@ function triggerNativeShare(app) {
   var shareUrl = window.location.origin + '/share/' + encodeURIComponent(app.slug || app.appId);
   var shareData = {
     title: app.title + ' — Tirtomoyo EduApps',
-    text: 'Ayo coba media pembelajaran "' + app.title + '" karya ' + (app.creatorDisplayName || 'Guru SD') + ' di Tirtomoyo EduApps:\n',
+    text: 'Ayo coba media pembelajaran *"' + app.title + '"* karya *' + (app.creatorDisplayName || 'Guru SD') + '* di Tirtomoyo EduApps:\n',
     url: shareUrl
   };
 
