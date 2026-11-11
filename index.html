@@ -120,6 +120,15 @@ function formatDateId(isoStr) {
   }
 }
 
+function normalizeScriptUrl(url) {
+  if (!url) return '';
+  var trimmed = String(url).trim();
+  if (/^https?:\/\/script\.google\.com(?:\/(?!a\/)|$)/i.test(trimmed)) {
+    return trimmed.replace(/^https?:\/\/script\.google\.com\/?/i, 'https://script.google.com/a/~/');
+  }
+  return trimmed;
+}
+
 function showToast(message, type) {
   var wrap = document.getElementById('toastWrap');
   if (!wrap) {
@@ -1568,7 +1577,17 @@ function renderSubmissionPage(container) {
   step2.className = 'wizard-step-content';
   step2.style.display = 'none';
 
-  step2.appendChild(createFormField('targetUrl', 'Alamat URL Aplikasi Pembelajaran', 'url', 'https://...', true, 'Wajib HTTPS dan dapat dibuka langsung oleh siswa/guru.'));
+  var fTargetUrl = createFormField('targetUrl', 'Alamat URL Aplikasi Pembelajaran', 'url', 'https://...', true, 'Wajib HTTPS dan dapat dibuka langsung oleh siswa/guru.');
+  var inTarget = fTargetUrl.querySelector('#in_targetUrl');
+  if (inTarget) {
+    inTarget.addEventListener('blur', function () {
+      this.value = normalizeScriptUrl(this.value);
+    });
+    inTarget.addEventListener('change', function () {
+      this.value = normalizeScriptUrl(this.value);
+    });
+  }
+  step2.appendChild(fTargetUrl);
   step2.appendChild(createThumbnailUploadField('thumbnailUrl', 'Gambar Sampul / Tangkapan Layar (Opsional)', ''));
   body.appendChild(step2);
 
@@ -1769,7 +1788,9 @@ function validateCurrentStep(step, form) {
     if (subjectIds.length === 0) errors.subjectIds = 'Pilih minimal satu mata pelajaran.';
     if (!catId) errors.categoryId = 'Pilih jenis media/aplikasi.';
   } else if (step === 2) {
-    var targetUrl = (form.querySelector('[name="targetUrl"]').value || '').trim();
+    var inUrl = form.querySelector('[name="targetUrl"]');
+    if (inUrl) inUrl.value = normalizeScriptUrl(inUrl.value);
+    var targetUrl = (inUrl ? inUrl.value : '').trim();
     var thumbnailUrl = (form.querySelector('[name="thumbnailUrl"]').value || '').trim();
 
     if (!targetUrl) errors.targetUrl = 'Alamat URL aplikasi wajib diisi.';
@@ -2089,7 +2110,7 @@ function handleFormSubmit(form, btnSubmit) {
     subjectIds: subjectIds,
     categoryId: form.querySelector('[name="categoryId"]').value,
     tags: (form.querySelector('[name="tags"]').value || '').trim(),
-    targetUrl: (form.querySelector('[name="targetUrl"]').value || '').trim(),
+    targetUrl: normalizeScriptUrl(form.querySelector('[name="targetUrl"]').value),
     thumbnailUrl: (form.querySelector('[name="thumbnailUrl"]').value || '').trim(),
     creatorName: (form.querySelector('[name="creatorName"]').value || '').trim(),
     schoolId: (form.querySelector('[name="schoolId"]').value || '').trim(),
@@ -2745,7 +2766,14 @@ function openTeacherEditAppModal(app, u) {
   form.querySelector('#in_edit_tags').value = (app.tags || []).join(', ');
 
   form.appendChild(createFormField('edit_url', 'URL Aplikasi Pembelajaran (Wajib HTTPS)', 'url', '', true));
-  form.querySelector('#in_edit_url').value = app.targetUrl;
+  var inEditUrl = form.querySelector('#in_edit_url');
+  inEditUrl.value = app.targetUrl;
+  inEditUrl.addEventListener('blur', function () {
+    this.value = normalizeScriptUrl(this.value);
+  });
+  inEditUrl.addEventListener('change', function () {
+    this.value = normalizeScriptUrl(this.value);
+  });
 
   form.appendChild(createThumbnailUploadField('edit_thumb', 'Gambar Sampul / Tangkapan Layar (Google Drive)', app.thumbnailUrl || ''));
 
@@ -2792,7 +2820,7 @@ function openTeacherEditAppModal(app, u) {
       subjectIds: subjects,
       categoryId: form.querySelector('#in_edit_catId').value,
       tags: form.querySelector('#in_edit_tags').value.trim(),
-      targetUrl: form.querySelector('#in_edit_url').value.trim(),
+      targetUrl: normalizeScriptUrl(form.querySelector('#in_edit_url').value),
       thumbnailUrl: form.querySelector('#in_edit_thumb').value.trim()
     };
 
