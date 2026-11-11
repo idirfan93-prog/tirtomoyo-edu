@@ -1025,7 +1025,7 @@ function renderDetailPage(container, slugOrId) {
         app.gradeLabels.forEach(function (g) {
           var b = document.createElement('span');
           b.className = 'badge grade';
-          b.textContent = g;
+          b.textContent = String(g).replace(/^SD\s+/i, '');
           badgeRow.appendChild(b);
         });
       }
@@ -1279,7 +1279,8 @@ function createAppCard(app) {
   if (app.gradeLabels && app.gradeLabels.length > 0) {
     var b2 = document.createElement('span');
     b2.className = 'badge grade';
-    b2.textContent = app.gradeLabels.length >= 6 ? 'Semua Kelas' : app.gradeLabels.join(', ');
+    var cleanGrades = app.gradeLabels.map(function (g) { return String(g).replace(/^SD\s+/i, ''); });
+    b2.textContent = cleanGrades.length >= 6 ? 'Semua Kelas' : cleanGrades.join(', ');
     badges.appendChild(b2);
   }
   if (app.featured) {
