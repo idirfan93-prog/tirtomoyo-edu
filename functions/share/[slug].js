@@ -82,10 +82,11 @@ export async function onRequest(context) {
 }
 
 function escapeXml(unsafe) {
-  if (!unsafe) return "";
+  if (!unsafe) return '';
   return String(unsafe)
-    .replace(/&/g, "&")
-    .replace(/</g, "<")
-    .replace(/>/g, ">")
-    .replace(/"/g, """);
+    .replace(/&/g, '\x26amp;')
+    .replace(/</g, '\x26lt;')
+    .replace(/>/g, '\x26gt;')
+    .replace(/"/g, '\x26quot;')
+    .replace(/'/g, '\x26#39;');
 }
