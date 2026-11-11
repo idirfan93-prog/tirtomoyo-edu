@@ -1281,12 +1281,6 @@ function createAppCard(app) {
     bStar.textContent = '★ Pilihan';
     badges.appendChild(bStar);
   }
-  if (app.playCount !== undefined && app.playCount !== null) {
-    var bPlay = document.createElement('span');
-    bPlay.className = 'badge plays';
-    bPlay.textContent = '▶ ' + app.playCount + 'x';
-    badges.appendChild(bPlay);
-  }
   body.appendChild(badges);
 
   var h3 = document.createElement('h3');
@@ -1309,6 +1303,12 @@ function createAppCard(app) {
     schSpan.textContent = '🏫 ' + app.schoolDisplayName;
     metaDiv.appendChild(schSpan);
   }
+
+  var playSpan = document.createElement('span');
+  playSpan.style.cssText = 'color:var(--success);font-weight:600;margin-top:.2rem;';
+  playSpan.textContent = '▶ ' + (app.playCount || 0) + 'x dimainkan';
+  metaDiv.appendChild(playSpan);
+
   body.appendChild(metaDiv);
 
   card.appendChild(body);
