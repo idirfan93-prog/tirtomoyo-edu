@@ -546,19 +546,19 @@ function renderAdminLoginForm(errorMessage) {
     '<div style="text-align:center;margin-bottom:1.5rem;">' +
     '<div class="brand-mark" style="margin:0 auto .75rem;width:48px;height:48px;font-size:1.3rem;">T</div>' +
     '<h2 style="font-size:1.4rem;margin:0 0 .25rem;">Masuk Panel Kurasi</h2>' +
-    '<p class="muted small" style="margin:0;">Tirtomoyo EduApps Admin</p>' +
+    '<p class="muted small" style="margin:0;">Gerbang Masuk Terpadu Tirtomoyo EduApps</p>' +
     '</div>' +
     (errorMessage ? '<div class="alert alert-error small" style="margin-bottom:1rem;">' + escapeHtml(errorMessage) + '</div>' : '') +
     '<form id="formAdminLogin">' +
     '<div class="field">' +
-    '<label class="label" for="admEmail">Alamat Email</label>' +
-    '<input type="email" id="admEmail" placeholder="nama@gmail.com" required autocomplete="email">' +
+    '<label class="label" for="admIdentifier">Identitas Pengguna <span class="req">*</span></label>' +
+    '<input type="text" id="admIdentifier" placeholder="Email akun admin atau No. WA" required autocomplete="username">' +
     '</div>' +
     '<div class="field">' +
-    '<label class="label" for="admPassword">Password</label>' +
+    '<label class="label" for="admPassword">Kata Sandi <span class="req">*</span></label>' +
     '<input type="password" id="admPassword" placeholder="••••••••" required autocomplete="current-password">' +
     '</div>' +
-    '<button type="submit" class="btn btn-primary" id="btnSubmitLogin" style="width:100%;margin-top:.75rem;">Masuk ke Panel</button>' +
+    '<button type="submit" class="btn btn-primary" id="btnSubmitLogin" style="width:100%;margin-top:.75rem;">Masuk ke Panel 🚀</button>' +
     '</form>' +
     '<div style="margin-top:1.5rem;text-align:center;">' +
     '<a href="index.html" class="small muted" style="text-decoration:none;">← Kembali ke Portal Publik</a>' +
@@ -574,19 +574,25 @@ function renderAdminLoginForm(errorMessage) {
       btn.disabled = true;
       btn.textContent = 'Memverifikasi...';
 
-      var email = document.getElementById('admEmail').value.trim();
+      var identifier = document.getElementById('admIdentifier').value.trim();
       var password = document.getElementById('admPassword').value;
 
-      callApi('api_adminLogin', { email: email, password: password }).then(function (res) {
-        ADMIN_STATE.token = res.token;
-        localStorage.setItem('eduapps_admin_token', res.token);
-        showToast('Selamat datang, ' + res.name + '!', 'success');
-        loadAdminSession();
+      callApi('api_loginUnified', { identifier: identifier, passwordOrNpsn: password }).then(function (res) {
+        if (res.role === 'ADMIN') {
+          ADMIN_STATE.token = res.token;
+          localStorage.setItem('eduapps_admin_token', res.token);
+          showToast('Selamat datang kembali, ' + res.name + '!', 'success');
+          loadAdminSession();
+        } else {
+          localStorage.setItem('eduapps_user_session', JSON.stringify({ user: res.user, apps: res.apps }));
+          showToast('Akun terverifikasi sebagai Guru. Mengalihkan ke Dasbor Guru...', 'info');
+          window.location.href = 'index.html#/dashboard-guru';
+        }
       }).catch(function (err) {
         btn.disabled = false;
-        btn.textContent = 'Masuk ke Panel';
+        btn.textContent = 'Masuk ke Panel 🚀';
         showToast(err.message || 'Login gagal.', 'error');
-        renderAdminLoginForm(err.message || 'Email atau password salah.');
+        renderAdminLoginForm(err.message || 'Identitas atau kata sandi tidak cocok.');
       });
     };
   }
@@ -598,8 +604,7 @@ function adminLogout() {
       ADMIN_STATE.token = null;
       ADMIN_STATE.session = null;
       localStorage.removeItem('eduapps_admin_token');
-      showToast('Anda telah keluar.', 'success');
-      renderAdminLoginForm();
+      window.location.href = 'index.html';
     }
   });
 }
