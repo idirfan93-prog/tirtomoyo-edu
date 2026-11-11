@@ -148,6 +148,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--blue); outline: 
 .badge.grade { background: #F2F4F7; color: #344054; border-color: var(--border); }
 .badge.type { background: #FEF3F2; color: #B42318; border-color: #FECDCA; }
 .badge.star { background: #FFFAEB; color: #B54708; border-color: #FEDF89; }
+.badge.plays { background: #F0FDF4; color: #166534; border-color: #BBF7D0; }
 
 /* ---------- Filters & States ---------- */
 .filters { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-card); padding: 1rem; display: grid; gap: .75rem; grid-template-columns: 1fr; margin-bottom: 1rem; }
@@ -276,3 +277,190 @@ tr:last-child td { border-bottom: 0; }
 .toast { padding: .8rem 1rem; border-radius: var(--radius-ctl); color: #fff; background: var(--navy); box-shadow: var(--shadow); }
 .toast.error { background: var(--danger); }
 .toast.success { background: var(--success); }
+
+/* ---------- Banner Statistik Portal ---------- */
+.stats-banner {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  padding: 1.25rem;
+  margin: -1.5rem auto 2rem;
+  box-shadow: 0 8px 24px rgba(16, 24, 40, .06);
+  position: relative;
+  z-index: 5;
+  max-width: var(--maxw);
+}
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1.25rem;
+  text-align: center;
+}
+.stat-box {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  padding: .5rem 1rem;
+}
+.stat-box:not(:last-child) {
+  border-right: 1px solid var(--border);
+}
+.stat-box-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  background: #EEF4FF;
+  color: var(--blue);
+  font-size: 1.5rem;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+.stat-box-content {
+  text-align: left;
+}
+.stat-box-num {
+  font-size: 1.6rem;
+  font-weight: 800;
+  color: var(--navy);
+  line-height: 1.1;
+}
+.stat-box-label {
+  font-size: .85rem;
+  color: var(--muted);
+  font-weight: 500;
+}
+.stats-dots {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .stats-banner {
+    margin: 1rem auto 1.5rem;
+    padding: .85rem;
+    overflow: hidden;
+  }
+  .stats-grid {
+    display: flex;
+    transition: transform .4s cubic-bezier(0.4, 0, 0.2, 1);
+    width: 100%;
+  }
+  .stat-box {
+    min-width: 100%;
+    border-right: none !important;
+    justify-content: flex-start;
+    padding: .25rem .5rem;
+  }
+  .stats-dots {
+    display: flex;
+    justify-content: center;
+    gap: .35rem;
+    margin-top: .6rem;
+  }
+  .stats-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #D0D5DD;
+    transition: all .2s;
+  }
+  .stats-dot.active {
+    background: var(--blue);
+    width: 18px;
+    border-radius: 999px;
+  }
+}
+
+/* ---------- Aplikasi Pilihan Hari Ini (Horizontal Scroll-Snap) ---------- */
+.daily-picks-scroll {
+  display: flex;
+  gap: 1rem;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  padding: .5rem 0 1rem;
+  -webkit-overflow-scrolling: touch;
+}
+.daily-picks-scroll::-webkit-scrollbar {
+  height: 6px;
+}
+.daily-picks-scroll::-webkit-scrollbar-thumb {
+  background: #D0D5DD;
+  border-radius: 999px;
+}
+.daily-card {
+  flex: 0 0 260px;
+  scroll-snap-align: start;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  transition: transform .15s, box-shadow .15s;
+}
+.daily-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 8px 18px rgba(16, 24, 40, .08);
+}
+.daily-card .d-thumb {
+  aspect-ratio: 16/9;
+  background: #EEF2F6;
+  position: relative;
+  overflow: hidden;
+}
+.daily-card .d-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.daily-card .d-body {
+  padding: .75rem;
+  display: flex;
+  flex-direction: column;
+  gap: .3rem;
+  flex: 1;
+}
+.daily-card h4 {
+  margin: 0;
+  font-size: .95rem;
+  font-weight: 700;
+  color: var(--navy);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.daily-card .d-meta {
+  font-size: .8rem;
+  color: var(--muted);
+}
+
+/* ---------- Halaman Cek Status & Form Revisi Mandiri Guru ---------- */
+.status-badge-lg {
+  display: inline-flex;
+  align-items: center;
+  gap: .4rem;
+  padding: .35rem .85rem;
+  border-radius: 999px;
+  font-weight: 700;
+  font-size: .9rem;
+  border: 1px solid;
+}
+.revision-box {
+  background: #FFF6ED;
+  border: 1.5px solid #F9DBAF;
+  border-radius: 10px;
+  padding: 1rem 1.25rem;
+  margin-bottom: 1.25rem;
+  color: #7A271A;
+}
+.revision-box h4 {
+  margin: 0 0 .35rem;
+  color: #C4320A;
+  font-size: .95rem;
+}
+.revision-box .note-text {
+  white-space: pre-wrap;
+  font-size: .9rem;
+  line-height: 1.5;
+}
