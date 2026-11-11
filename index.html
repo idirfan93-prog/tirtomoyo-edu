@@ -24,9 +24,10 @@
         <a href="#/" class="navlink active">Beranda</a>
         <a href="#/katalog" class="navlink">Katalog</a>
         <a href="#/ajukan" class="navlink">Ajukan Aplikasi</a>
-        <a href="#/status" class="navlink">Cek Status</a>
         <a href="#/tentang" class="navlink">Tentang</a>
-        <a href="admin.html" class="btn btn-sm btn-admin-header" style="background:var(--red);color:#fff;margin-left:.5rem;border-radius:8px;font-size:.85rem;padding:.35rem .85rem;text-decoration:none;">Masuk Admin</a>
+        <div id="navAuthSlot" style="display:inline-flex;margin-left:.4rem;">
+          <button type="button" class="btn btn-sm" id="btnNavAuth" style="background:var(--navy);color:#fff;border-radius:8px;font-size:.85rem;padding:.35rem .85rem;cursor:pointer;">🔑 Masuk</button>
+        </div>
       </nav>
     </div>
   </header>
@@ -409,6 +410,8 @@ function handlePublicRoute() {
     }
   });
 
+  syncNavAuthButton();
+
   if (hash === '#/' || hash === '') {
     renderHomePage(content);
   } else if (hash.indexOf('#/katalog') === 0) {
@@ -421,8 +424,8 @@ function handlePublicRoute() {
     renderPlayPage(content, slugOrId);
   } else if (hash === '#/ajukan') {
     renderSubmissionPage(content);
-  } else if (hash === '#/status') {
-    renderStatusPage(content);
+  } else if (hash === '#/dashboard-guru' || hash === '#/status') {
+    renderTeacherDashboard(content);
   } else if (hash === '#/tentang') {
     renderAboutPage(content);
   } else {
@@ -1535,9 +1538,34 @@ function renderSubmissionPage(container) {
   var teachersList = (PUBLIC_STATE.categories && PUBLIC_STATE.categories.teachers) ? PUBLIC_STATE.categories.teachers : [];
   var schoolsList = (PUBLIC_STATE.categories && PUBLIC_STATE.categories.schools) ? PUBLIC_STATE.categories.schools : [];
 
-  step3.appendChild(createSearchableTeacherField('creatorName', 'Nama Lengkap Guru Pengembang', teachersList, schoolsList));
-  step3.appendChild(createSearchableSchoolField('schoolSelect', 'Sekolah Asal', schoolsList));
-  step3.appendChild(createFormField('contact', 'Kontak WhatsApp atau Email Pribadi', 'text', '08123456789 / nama@guru.sd.belajar.id', true, 'Hanya untuk koordinasi kurator; TIDAK akan ditampilkan ke publik.'));
+  var fTeacher = createSearchableTeacherField('creatorName', 'Nama Lengkap Guru Pengembang', teachersList, schoolsList);
+  var fSchool = createSearchableSchoolField('schoolSelect', 'Sekolah Asal', schoolsList);
+  var fContact = createFormField('contact', 'Kontak WhatsApp atau Email Pribadi', 'text', '08123456789 / nama@guru.sd.belajar.id', true, 'Hanya untuk koordinasi kurator; TIDAK akan ditampilkan ke publik.');
+
+  var sessionData = getTeacherSession_();
+  if (sessionData && sessionData.user) {
+    var u = sessionData.user;
+    var inT = fTeacher.querySelector('#in_creatorName');
+    if (inT) inT.value = u.name;
+    var inC = fContact.querySelector('#in_contact');
+    if (inC) inC.value = u.contact || u.email;
+    var inSId = fSchool.querySelector('#in_schoolId');
+    if (inSId) inSId.value = u.schoolId || '';
+    var inSName = fSchool.querySelector('#in_schoolName');
+    if (inSName) inSName.value = u.schoolName || '';
+    var inSNpsn = fSchool.querySelector('#in_schoolNpsn');
+    if (inSNpsn) inSNpsn.value = u.schoolNpsn || '';
+    var trig = fSchool.querySelector('#schoolSelectTrigger');
+    if (trig && u.schoolName) {
+      trig.innerHTML = '<span id="in_school_name_display"><strong>' + escapeHtml(u.schoolName) + '</strong>' +
+        (u.schoolNpsn ? ' <small class="muted">(NPSN: ' + escapeHtml(u.schoolNpsn) + ')</small>' : '') +
+        '</span><span style="font-size:.8rem;color:var(--muted);">▼</span>';
+    }
+  }
+
+  step3.appendChild(fTeacher);
+  step3.appendChild(fSchool);
+  step3.appendChild(fContact);
   body.appendChild(step3);
 
   /* ----- LANGKAH 4 ----- */
@@ -2259,137 +2287,493 @@ function initDailyPicksCarousel() {
   }, 3800);
 }
 
-/* ---------- HALAMAN CEK STATUS & FORM REVISI MANDIRI GURU ---------- */
-function renderStatusPage(container) {
-  var root = document.createElement('div');
-  root.className = 'container form-wrap';
+/* ==========================================================================
+   4. MODUL MANAJEMEN SESI, MODAL LOGIN TERPADU, & DASBOR GURU
+   ========================================================================== */
 
-  root.innerHTML = '<div style="margin-bottom:1.5rem;">' +
-    '<h1>Cek Status & Revisi Pengajuan</h1>' +
-    '<p class="muted">Masukkan Nomor Referensi (contoh: <code>TMY-2841</code>) dan Kontak WhatsApp/Email yang Anda daftarkan saat mengajukan karya.</p>' +
-    '</div>' +
-    '<div class="panel" style="margin-bottom:1.5rem;">' +
-    '<form id="formCheckStatus">' +
-    '<div class="field">' +
-    '<label class="label" for="in_refNum">Nomor Referensi Pengajuan <span class="req">*</span></label>' +
-    '<input type="text" id="in_refNum" placeholder="TMY-XXXX" style="font-weight:700;letter-spacing:.05em;" required>' +
-    '</div>' +
-    '<div class="field">' +
-    '<label class="label" for="in_refContact">Kontak WhatsApp / Email Terdaftar <span class="req">*</span></label>' +
-    '<input type="text" id="in_refContact" placeholder="Nomor WA atau alamat email Anda..." required>' +
-    '</div>' +
-    '<button type="submit" class="btn btn-primary" id="btnCheckStatus">🔍 Cek Status Pengajuan</button>' +
-    '</form>' +
-    '</div>' +
-    '<div id="statusResultWrap"></div>';
+function getTeacherSession_() {
+  try {
+    return JSON.parse(localStorage.getItem('eduapps_user_session') || 'null');
+  } catch (e) {
+    return null;
+  }
+}
 
-  var form = root.querySelector('#formCheckStatus');
+function syncNavAuthButton() {
+  var slot = document.getElementById('navAuthSlot');
+  if (!slot) return;
+  var sess = getTeacherSession_();
+  if (sess && sess.user) {
+    slot.innerHTML = '<a href="#/dashboard-guru" class="btn btn-sm" style="background:#EEF4FF;color:var(--blue-dark);border-radius:8px;font-size:.85rem;padding:.35rem .85rem;font-weight:700;text-decoration:none;">👤 ' + escapeHtml(sess.user.name.split(' ')[0]) + '</a>';
+  } else {
+    slot.innerHTML = '<button type="button" class="btn btn-sm" id="btnNavAuth" style="background:var(--navy);color:#fff;border-radius:8px;font-size:.85rem;padding:.35rem .85rem;cursor:pointer;">🔑 Masuk</button>';
+    var btn = slot.querySelector('#btnNavAuth');
+    if (btn) btn.onclick = function () { openUnifiedLoginModal(); };
+  }
+}
+
+function openUnifiedLoginModal() {
+  var existing = document.getElementById('unifiedLoginBackdrop');
+  if (existing) existing.remove();
+
+  var backdrop = document.createElement('div');
+  backdrop.id = 'unifiedLoginBackdrop';
+  backdrop.className = 'modal-backdrop';
+
+  var modal = document.createElement('div');
+  modal.className = 'modal auth-modal';
+
+  modal.innerHTML = '<div class="auth-modal-header">' +
+    '<div class="brand-mark" style="margin:0 auto .6rem;width:44px;height:44px;font-size:1.15rem;">T</div>' +
+    '<h2>Masuk Portal EduApps</h2>' +
+    '<p class="small muted">Akses akun Guru Pengembang & Pengelola Portal</p>' +
+    '</div>' +
+    '<div id="loginAlertBox" style="display:none;"></div>' +
+    '<form id="formUnifiedLogin">' +
+    '<div class="field">' +
+    '<label class="label" for="in_loginId">Nomor WhatsApp atau Alamat Email <span class="req">*</span></label>' +
+    '<input type="text" id="in_loginId" placeholder="08xxxxxxxxxx atau nama@email.com" required autocomplete="username">' +
+    '</div>' +
+    '<div class="field">' +
+    '<label class="label" for="in_loginPass">Kata Sandi / NPSN Sekolah <span class="req">*</span></label>' +
+    '<input type="password" id="in_loginPass" placeholder="NPSN Sekolah (Password default)" required autocomplete="current-password">' +
+    '<div class="help">Guru: gunakan 8 digit NPSN sekolah asal Anda bila belum pernah mengubah kata sandi.</div>' +
+    '</div>' +
+    '<div style="display:flex;justify-content:flex-end;gap:.6rem;margin-top:1.25rem;">' +
+    '<button type="button" class="btn btn-secondary btn-sm" id="btnCloseLogin">Batal</button>' +
+    '<button type="submit" class="btn btn-primary btn-sm" id="btnSubmitUnifiedLogin" style="min-width:110px;">Masuk 🚀</button>' +
+    '</div>' +
+    '</form>';
+
+  backdrop.appendChild(modal);
+  document.body.appendChild(backdrop);
+
+  modal.querySelector('#btnCloseLogin').onclick = function () { backdrop.remove(); };
+
+  var form = modal.querySelector('#formUnifiedLogin');
   form.onsubmit = function (e) {
     e.preventDefault();
-    var btn = root.querySelector('#btnCheckStatus');
-    var resultWrap = root.querySelector('#statusResultWrap');
-    var ref = root.querySelector('#in_refNum').value.trim();
-    var contact = root.querySelector('#in_refContact').value.trim();
+    var btn = modal.querySelector('#btnSubmitUnifiedLogin');
+    var alertBox = modal.querySelector('#loginAlertBox');
+    var idVal = modal.querySelector('#in_loginId').value.trim();
+    var passVal = modal.querySelector('#in_loginPass').value.trim();
 
+    alertBox.style.display = 'none';
     btn.disabled = true;
-    btn.textContent = 'Memeriksa ke server...';
-    resultWrap.innerHTML = '<div class="spinner"></div>';
+    btn.textContent = 'Memverifikasi...';
 
-    callApi('api_checkSubmissionStatus', { referenceNumber: ref, contact: contact }).then(function (data) {
-      btn.disabled = false;
-      btn.textContent = '🔍 Cek Status Pengajuan';
-      renderStatusResult(resultWrap, data, contact);
+    callApi('api_loginUnified', { identifier: idVal, passwordOrNpsn: passVal }).then(function (res) {
+      if (res.role === 'ADMIN') {
+        localStorage.setItem('eduapps_admin_token', res.token);
+        showToast('Login berhasil. Mengalihkan ke Panel Admin...', 'success');
+        window.location.href = res.redirect || 'admin.html';
+      } else {
+        localStorage.setItem('eduapps_user_session', JSON.stringify({ user: res.user, apps: res.apps }));
+        showToast('Selamat datang, ' + res.user.name + '!', 'success');
+        backdrop.remove();
+        syncNavAuthButton();
+        navigateTo('#/dashboard-guru');
+      }
     }).catch(function (err) {
       btn.disabled = false;
-      btn.textContent = '🔍 Cek Status Pengajuan';
-      resultWrap.innerHTML = '<div class="alert alert-error"><strong>Gagal Memeriksa Status:</strong><br>' + escapeHtml(err.message) + '</div>';
+      btn.textContent = 'Masuk 🚀';
+      alertBox.className = 'alert-educational';
+      alertBox.innerHTML = '<strong>Gagal Masuk:</strong><br>' + escapeHtml(err.message || 'Nomor kontak atau kata sandi tidak cocok. Masukkan nomor HP/WA atau email yang Anda daftarkan saat mengajukan karya. Untuk kata sandi awal (default), gunakan 8 digit NPSN sekolah asal Anda.');
+      alertBox.style.display = 'block';
+    });
+  };
+}
+
+function renderTeacherDashboard(container) {
+  var sess = getTeacherSession_();
+  if (!sess || !sess.user) {
+    container.innerHTML = '<div class="container" style="padding:3.5rem 1rem;text-align:center;">' +
+      '<div class="state" style="max-width:520px;margin:0 auto;padding:2.5rem 1.5rem;">' +
+      '<span style="font-size:2.5rem;display:block;margin-bottom:.5rem;">🔐</span>' +
+      '<h2>Area Masuk Guru</h2>' +
+      '<p class="muted small">Silakan masuk menggunakan No. WhatsApp/Email dan NPSN sekolah untuk memantau karya, menyunting aplikasi, atau mengubah kata sandi.</p>' +
+      '<button type="button" class="btn btn-primary" id="btnTriggerLogin" style="margin-top:.75rem;">Masuk ke Akun Guru</button>' +
+      '</div>' +
+      '</div>';
+    var btn = container.querySelector('#btnTriggerLogin');
+    if (btn) btn.onclick = function () { openUnifiedLoginModal(); };
+    return;
+  }
+
+  var u = sess.user;
+  container.innerHTML = '<div class="container teacher-dash-wrap">' +
+    '<div class="teacher-profile-card">' +
+    '<div>' +
+    '<h1>Halo, ' + escapeHtml(u.name) + '</h1>' +
+    '<div class="teacher-meta">' +
+    '<span>🏫 ' + escapeHtml(u.schoolName || 'SD Tirtomoyo') + ' (NPSN: ' + escapeHtml(u.schoolNpsn || '-') + ')</span>' +
+    '<span>📱 ' + escapeHtml(u.contact || u.email) + '</span>' +
+    '</div>' +
+    '</div>' +
+    '<div style="display:flex;gap:.5rem;">' +
+    '<a href="#/ajukan" class="btn btn-sm" style="background:#fff;color:var(--navy);font-weight:700;text-decoration:none;">+ Ajukan Karya Baru</a>' +
+    '<button type="button" class="btn btn-sm btn-secondary" id="btnTeacherLogout" style="background:rgba(255,255,255,.15);color:#fff;border-color:rgba(255,255,255,.3);">Keluar</button>' +
+    '</div>' +
+    '</div>' +
+    '<div class="teacher-stat-grid" id="teacherStatRow">' +
+    '<div class="teacher-stat-card"><div class="icon">📦</div><div><div class="num" id="tStatTotal">-</div><div class="lbl">Karya Terdaftar</div></div></div>' +
+    '<div class="teacher-stat-card"><div class="icon" style="background:#ECFDF3;color:var(--success);">✔</div><div><div class="num" id="tStatVerified">-</div><div class="lbl">Terverifikasi Kurator</div></div></div>' +
+    '<div class="teacher-stat-card"><div class="icon" style="background:#FFFAEB;color:#B54708;">▶</div><div><div class="num" id="tStatPlays">-</div><div class="lbl">Total Dimainkan</div></div></div>' +
+    '</div>' +
+    '<div id="changePassSlot"></div>' +
+    '<div style="margin-top:2rem;">' +
+    '<h2 style="font-size:1.25rem;margin-bottom:1rem;">Daftar Aplikasi Pembelajaran Saya</h2>' +
+    '<div id="teacherAppListWrap"><div class="spinner"></div></div>' +
+    '</div>' +
+    '</div>';
+
+  container.querySelector('#btnTeacherLogout').onclick = function () {
+    showConfirmModal('Konfirmasi Keluar', 'Yakin ingin keluar dari akun guru?', 'Keluar').then(function (ok) {
+      if (ok) {
+        localStorage.removeItem('eduapps_user_session');
+        showToast('Anda telah keluar dari akun.', 'info');
+        syncNavAuthButton();
+        navigateTo('#/');
+      }
     });
   };
 
-  container.innerHTML = '';
-  container.appendChild(root);
+  var passSlot = container.querySelector('#changePassSlot');
+  passSlot.appendChild(createChangePasswordCard(u));
+
+  refreshTeacherDashboardApps(container, u);
 }
 
-function renderStatusResult(wrapper, s, contact) {
-  var statusBadge = '';
-  if (s.status === 'PENDING') statusBadge = '<span class="status-badge-lg st-PENDING">⏳ Menunggu Pemeriksaan</span>';
-  else if (s.status === 'IN_REVIEW') statusBadge = '<span class="status-badge-lg st-IN_REVIEW">🔍 Sedang Ditinjau Kurator</span>';
-  else if (s.status === 'NEEDS_REVISION') statusBadge = '<span class="status-badge-lg st-NEEDS_REVISION">✏️ Perlu Revisi</span>';
-  else if (s.status === 'APPROVED') statusBadge = '<span class="status-badge-lg st-APPROVED">✔ Terverifikasi & Terbit</span>';
-  else if (s.status === 'REJECTED') statusBadge = '<span class="status-badge-lg st-REJECTED">✕ Ditolak</span>';
+function refreshTeacherDashboardApps(container, u) {
+  var listWrap = container.querySelector('#teacherAppListWrap');
+  if (!listWrap) return;
 
-  var html = '<div class="panel">' +
-    '<div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:.5rem;margin-bottom:1rem;">' +
-    '<div><h2 style="margin:0 0 .25rem;">' + escapeHtml(s.title) + '</h2><span class="code" style="font-weight:700;">' + escapeHtml(s.submissionId) + '</span></div>' +
-    statusBadge +
-    '</div>' +
-    '<dl class="meta">' +
-    '<dt>Pengembang</dt><dd>' + escapeHtml(s.creatorName) + '</dd>' +
-    '<dt>Sekolah</dt><dd>' + escapeHtml(s.schoolName) + '</dd>' +
-    '<dt>Tautan Aplikasi</dt><dd><a href="' + escapeHtml(s.targetUrl) + '" target="_blank" rel="noopener noreferrer">' + escapeHtml(s.targetUrl) + ' ↗</a></dd>' +
-    '<dt>Tgl Pengajuan</dt><dd>' + formatDateId(s.submittedAt) + '</dd>' +
-    '</dl>';
+  callApi('api_loginUnified', { identifier: u.contact || u.email, passwordOrNpsn: u.hasCustomPassword ? 'DUMMY' : (u.schoolNpsn || '') }).catch(function () {
+    return null;
+  });
 
-  if (s.canRevise && s.reviewNotes) {
-    html += '<div class="revision-box" style="margin-top:1.25rem;">' +
-      '<h4>Catatan Instruksi Perbaikan dari Kurator:</h4>' +
-      '<div class="note-text">' + escapeHtml(s.reviewNotes) + '</div>' +
-      '</div>';
+  var sess = getTeacherSession_();
+  var apps = (sess && sess.apps) ? sess.apps : [];
+
+  var totalPlays = 0;
+  var totalVerified = 0;
+
+  apps.forEach(function (a) {
+    totalPlays += (a.playCount || 0);
+    if (a.isVerified) totalVerified++;
+  });
+
+  var stTot = container.querySelector('#tStatTotal');
+  var stVer = container.querySelector('#tStatVerified');
+  var stPly = container.querySelector('#tStatPlays');
+  if (stTot) stTot.textContent = apps.length;
+  if (stVer) stVer.textContent = totalVerified;
+  if (stPly) stPly.textContent = totalPlays + 'x';
+
+  if (!apps.length) {
+    listWrap.innerHTML = '<div class="state"><p class="muted">Belum ada aplikasi yang Anda daftarkan.</p><a href="#/ajukan" class="btn btn-primary btn-sm" style="margin-top:.5rem;">Mulai Ajukan Aplikasi</a></div>';
+    return;
   }
 
-  html += '</div>';
+  listWrap.innerHTML = '';
+  apps.forEach(function (app) {
+    var item = document.createElement('div');
+    item.className = 'teacher-app-item';
 
-  if (s.canRevise) {
-    html += '<div class="form-card" style="margin-top:1.5rem;">' +
-      '<div class="form-card-header">' +
-      '<h2>Formulir Perbaikan Mandiri</h2>' +
-      '<p>Perbaiki kolom yang diminta kurator, lalu klik "Kirim Ulang Revisi" di bawah.</p>' +
+    var statusHtml = app.isVerified
+      ? '<span class="status st-APPROVED" style="font-size:.75rem;">✔ Terverifikasi</span>'
+      : (app.status === 'PUBLISHED' ? '<span class="status st-APPROVED" style="font-size:.75rem;">Terbit (Kurasi)</span>' : '<span class="status st-' + app.status + '" style="font-size:.75rem;">' + app.status + '</span>');
+
+    var thumbSrc = app.thumbnailUrl || '';
+    item.innerHTML = (thumbSrc
+      ? '<img src="' + escapeHtml(thumbSrc) + '" class="teacher-app-thumb" alt="' + escapeHtml(app.title) + '">'
+      : '<div class="teacher-app-thumb placeholder" style="font-size:.8rem;padding:.25rem;">' + escapeHtml(app.title) + '</div>') +
+      '<div class="teacher-app-info">' +
+      '<div style="display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;margin-bottom:.2rem;">' +
+      statusHtml +
+      '<span class="small muted">▶ ' + (app.playCount || 0) + 'x dimainkan</span>' +
       '</div>' +
-      '<form id="formTeacherRevision" style="padding:1.5rem;">' +
-      '<div class="field"><label class="label">Nama Aplikasi <span class="req">*</span></label><input type="text" id="rev_title" value="' + escapeHtml(s.title) + '" required></div>' +
-      '<div class="field"><label class="label">Ringkasan Singkat <span class="req">*</span></label><input type="text" id="rev_short" value="' + escapeHtml(s.shortDescription) + '" required></div>' +
-      '<div class="field"><label class="label">Deskripsi Lengkap <span class="req">*</span></label><textarea id="rev_desc" required>' + escapeHtml(s.description) + '</textarea></div>' +
-      '<div class="field"><label class="label">Tujuan Pembelajaran</label><textarea id="rev_obj">' + escapeHtml(s.learningObjective || '') + '</textarea></div>' +
-      '<div class="field"><label class="label">URL Aplikasi (Wajib HTTPS) <span class="req">*</span></label><input type="url" id="rev_url" value="' + escapeHtml(s.targetUrl) + '" required></div>' +
-      '<div class="field"><label class="label">URL Gambar Sampul / Screenshot</label><input type="url" id="rev_thumb" value="' + escapeHtml(s.thumbnailUrl || '') + '"></div>' +
-      '<div class="field"><label class="label">Kata Kunci (Tags)</label><input type="text" id="rev_tags" value="' + escapeHtml((s.tags || []).join(', ')) + '"></div>' +
-      '<button type="submit" class="btn btn-primary" id="btnSubmitRevision" style="margin-top:1rem;width:100%;">Kirim Ulang Revisi 🚀</button>' +
-      '</form>' +
+      '<h3>' + escapeHtml(app.title) + '</h3>' +
+      '<p class="small muted" style="margin:0;">' + escapeHtml((app.gradeLabels || []).join(', ')) + ' • ' + escapeHtml((app.subjectLabels || []).join(', ')) + '</p>' +
+      (app.reviewNotes ? '<div class="small" style="color:var(--warning);margin-top:.25rem;"><strong>Catatan Kurator:</strong> ' + escapeHtml(app.reviewNotes) + '</div>' : '') +
+      '</div>' +
+      '<div class="teacher-app-actions">' +
+      '<a href="#/detail/' + encodeURIComponent(app.slug || app.appId) + '" class="btn btn-secondary btn-sm">👁️ Lihat</a>' +
+      '<button type="button" class="btn btn-primary btn-sm btn-edit-app">✏️ Edit Lengkap</button>' +
+      '<button type="button" class="btn btn-secondary btn-sm btn-share-app">📤</button>' +
       '</div>';
-  }
 
-  wrapper.innerHTML = html;
-
-  var revForm = wrapper.querySelector('#formTeacherRevision');
-  if (revForm) {
-    revForm.onsubmit = function (e) {
-      e.preventDefault();
-      var btnRev = revForm.querySelector('#btnSubmitRevision');
-      btnRev.disabled = true;
-      btnRev.textContent = 'Mengirim revisi ke server...';
-
-      var payload = {
-        submissionId: s.submissionId,
-        contact: contact,
-        title: revForm.querySelector('#rev_title').value.trim(),
-        shortDescription: revForm.querySelector('#rev_short').value.trim(),
-        description: revForm.querySelector('#rev_desc').value.trim(),
-        learningObjective: revForm.querySelector('#rev_obj').value.trim(),
-        targetUrl: revForm.querySelector('#rev_url').value.trim(),
-        thumbnailUrl: revForm.querySelector('#rev_thumb').value.trim(),
-        tags: revForm.querySelector('#rev_tags').value.trim()
-      };
-
-      callApi('api_resubmitRevision', payload).then(function (res) {
-        showToast(res.message, 'success');
-        renderStatusPage(document.getElementById('publicContent'));
-      }).catch(function (err) {
-        btnRev.disabled = false;
-        btnRev.textContent = 'Kirim Ulang Revisi 🚀';
-        showToast(err.message || 'Gagal mengirim revisi.', 'error');
-      });
+    item.querySelector('.btn-edit-app').onclick = function () {
+      openTeacherEditAppModal(app, u);
     };
+
+    item.querySelector('.btn-share-app').onclick = function () {
+      triggerNativeShare(app);
+    };
+
+    listWrap.appendChild(item);
+  });
+}
+
+function createChangePasswordCard(userProfile) {
+  var card = document.createElement('div');
+  card.className = 'panel profile-security-card';
+
+  card.innerHTML = '<div style="display:flex;align-items:center;gap:.6rem;margin-bottom:1rem;border-bottom:1px solid var(--border);padding-bottom:.75rem;">' +
+    '<span style="font-size:1.3rem;">🔐</span>' +
+    '<div>' +
+    '<h3 style="margin:0;font-size:1.05rem;">Keamanan & Kata Sandi</h3>' +
+    '<p class="small muted" style="margin:0;">' +
+    (userProfile.hasCustomPassword ? 'Ubah kata sandi akun Anda secara berkala.' : 'Akun Anda masih menggunakan password awal (NPSN Sekolah). Buat kata sandi privat agar lebih aman.') +
+    '</p>' +
+    '</div>' +
+    '</div>' +
+    '<form id="formChangePassword">' +
+    '<div class="field">' +
+    '<label class="label" for="in_currPass">Kata Sandi Saat Ini <span class="req">*</span></label>' +
+    '<input type="password" id="in_currPass" placeholder="' + (userProfile.hasCustomPassword ? 'Masukkan kata sandi lama' : 'Masukkan NPSN Sekolah (' + (userProfile.schoolNpsn || '') + ')') + '" required autocomplete="current-password">' +
+    '</div>' +
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;">' +
+    '<div class="field">' +
+    '<label class="label" for="in_newPass">Kata Sandi Baru <span class="req">*</span></label>' +
+    '<input type="password" id="in_newPass" placeholder="Minimal 6 karakter" required minlength="6" autocomplete="new-password">' +
+    '</div>' +
+    '<div class="field">' +
+    '<label class="label" for="in_confPass">Konfirmasi Kata Sandi Baru <span class="req">*</span></label>' +
+    '<input type="password" id="in_confPass" placeholder="Ulangi kata sandi baru" required minlength="6" autocomplete="new-password">' +
+    '</div>' +
+    '</div>' +
+    '<div id="changePassError" class="field-error" style="display:none;margin-bottom:.75rem;"></div>' +
+    '<div style="display:flex;justify-content:flex-end;">' +
+    '<button type="submit" class="btn btn-primary btn-sm" id="btnSavePassword">Simpan Kata Sandi Baru</button>' +
+    '</div>' +
+    '</form>';
+
+  var form = card.querySelector('#formChangePassword');
+  form.onsubmit = function (e) {
+    e.preventDefault();
+    var errBox = card.querySelector('#changePassError');
+    var btn = card.querySelector('#btnSavePassword');
+    var currPass = card.querySelector('#in_currPass').value.trim();
+    var newPass = card.querySelector('#in_newPass').value.trim();
+    var confPass = card.querySelector('#in_confPass').value.trim();
+
+    errBox.style.display = 'none';
+
+    if (newPass !== confPass) {
+      errBox.textContent = 'Konfirmasi kata sandi baru tidak cocok.';
+      errBox.style.display = 'block';
+      return;
+    }
+    if (newPass.length < 6) {
+      errBox.textContent = 'Kata sandi baru minimal 6 karakter.';
+      errBox.style.display = 'block';
+      return;
+    }
+    if (newPass === currPass) {
+      errBox.textContent = 'Kata sandi baru tidak boleh sama dengan kata sandi lama.';
+      errBox.style.display = 'block';
+      return;
+    }
+
+    btn.disabled = true;
+    btn.textContent = '⏳ Menyimpan...';
+
+    callApi('api_changePassword', {
+      identifier: userProfile.contact || userProfile.email,
+      currentPassword: currPass,
+      newPassword: newPass
+    }).then(function (res) {
+      btn.disabled = false;
+      btn.textContent = 'Simpan Kata Sandi Baru';
+      form.reset();
+      userProfile.hasCustomPassword = true;
+      var sess = getTeacherSession_();
+      if (sess && sess.user) {
+        sess.user.hasCustomPassword = true;
+        localStorage.setItem('eduapps_user_session', JSON.stringify(sess));
+      }
+      showToast(res.message || 'Kata sandi berhasil diubah!', 'success');
+    }).catch(function (err) {
+      btn.disabled = false;
+      btn.textContent = 'Simpan Kata Sandi Baru';
+      errBox.textContent = err.message || 'Gagal mengubah kata sandi.';
+      errBox.style.display = 'block';
+    });
+  };
+
+  return card;
+}
+
+function openTeacherEditAppModal(app, u) {
+  var backdrop = document.createElement('div');
+  backdrop.className = 'modal-backdrop';
+
+  var modal = document.createElement('div');
+  modal.className = 'modal';
+  modal.style.maxWidth = '760px';
+  modal.style.maxHeight = '90vh';
+  modal.style.overflowY = 'auto';
+
+  modal.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--border);padding-bottom:.75rem;">' +
+    '<h3 style="margin:0;">Edit Lengkap: ' + escapeHtml(app.title) + '</h3>' +
+    '<button type="button" class="btn btn-secondary btn-sm" id="btnCloseEditAppModal">✕</button>' +
+    '</div>';
+
+  var form = document.createElement('form');
+  form.style.marginTop = '1rem';
+
+  form.appendChild(createFormField('edit_title', 'Nama Aplikasi', 'text', '', true));
+  form.querySelector('#in_edit_title').value = app.title;
+
+  form.appendChild(createFormField('edit_short', 'Ringkasan Singkat', 'text', '', true));
+  form.querySelector('#in_edit_short').value = app.shortDescription || '';
+
+  form.appendChild(createFormField('edit_desc', 'Deskripsi Lengkap', 'textarea', '', true));
+  form.querySelector('#in_edit_desc').value = app.description || '';
+
+  form.appendChild(createFormField('edit_obj', 'Tujuan Pembelajaran (Opsional)', 'textarea', '', false));
+  form.querySelector('#in_edit_obj').value = app.learningObjective || '';
+
+  var fGrade = document.createElement('div');
+  fGrade.className = 'field';
+  fGrade.innerHTML = '<label class="label">Kelas Sasaran (SD) <span class="req">*</span></label>';
+  var checksGrade = document.createElement('div');
+  checksGrade.className = 'checks';
+  var defaultGrades = [
+    { id: 'SD1', label: 'SD Kelas 1' }, { id: 'SD2', label: 'SD Kelas 2' }, { id: 'SD3', label: 'SD Kelas 3' },
+    { id: 'SD4', label: 'SD Kelas 4' }, { id: 'SD5', label: 'SD Kelas 5' }, { id: 'SD6', label: 'SD Kelas 6' }
+  ];
+  (PUBLIC_STATE.categories && PUBLIC_STATE.categories.grades ? PUBLIC_STATE.categories.grades : defaultGrades).forEach(function (g) {
+    var checked = (app.gradeIds && app.gradeIds.indexOf(g.id) !== -1) ? ' checked' : '';
+    var lbl = document.createElement('label');
+    lbl.className = 'check';
+    lbl.innerHTML = '<input type="checkbox" name="edit_gradeIds" value="' + escapeHtml(g.id) + '"' + checked + '> ' + escapeHtml(g.label);
+    checksGrade.appendChild(lbl);
+  });
+  fGrade.appendChild(checksGrade);
+  form.appendChild(fGrade);
+
+  var fSub = document.createElement('div');
+  fSub.className = 'field';
+  fSub.innerHTML = '<label class="label">Mata Pelajaran <span class="req">*</span></label>';
+  var checksSub = document.createElement('div');
+  checksSub.className = 'checks';
+  if (PUBLIC_STATE.categories && PUBLIC_STATE.categories.subjects) {
+    PUBLIC_STATE.categories.subjects.forEach(function (s) {
+      var checked = (app.subjectIds && app.subjectIds.indexOf(s.id) !== -1) ? ' checked' : '';
+      var lbl = document.createElement('label');
+      lbl.className = 'check';
+      lbl.innerHTML = '<input type="checkbox" name="edit_subjectIds" value="' + escapeHtml(s.id) + '"' + checked + '> ' + escapeHtml(s.label);
+      checksSub.appendChild(lbl);
+    });
   }
+  fSub.appendChild(checksSub);
+  form.appendChild(fSub);
+
+  var fType = document.createElement('div');
+  fType.className = 'field';
+  fType.innerHTML = '<label for="in_edit_catId" class="label">Jenis Media/Aplikasi <span class="req">*</span></label>';
+  var selType = document.createElement('select');
+  selType.id = 'in_edit_catId';
+  if (PUBLIC_STATE.categories && PUBLIC_STATE.categories.appTypes) {
+    PUBLIC_STATE.categories.appTypes.forEach(function (t) {
+      var opt = document.createElement('option');
+      opt.value = t.id;
+      opt.textContent = t.label;
+      if (app.categoryId === t.id) opt.selected = true;
+      selType.appendChild(opt);
+    });
+  }
+  fType.appendChild(selType);
+  form.appendChild(fType);
+
+  form.appendChild(createFormField('edit_tags', 'Kata Kunci (Tags)', 'text', '', false));
+  form.querySelector('#in_edit_tags').value = (app.tags || []).join(', ');
+
+  form.appendChild(createFormField('edit_url', 'URL Aplikasi Pembelajaran (Wajib HTTPS)', 'url', '', true));
+  form.querySelector('#in_edit_url').value = app.targetUrl;
+
+  form.appendChild(createThumbnailUploadField('edit_thumb', 'Gambar Sampul / Tangkapan Layar (Google Drive)', app.thumbnailUrl || ''));
+
+  var btnRow = document.createElement('div');
+  btnRow.style.cssText = 'display:flex;justify-content:flex-end;gap:.75rem;margin-top:1.5rem;';
+  var btnCancel = document.createElement('button');
+  btnCancel.type = 'button';
+  btnCancel.className = 'btn btn-secondary btn-sm';
+  btnCancel.textContent = 'Batal';
+  btnCancel.onclick = function () { backdrop.remove(); };
+
+  var btnSubmit = document.createElement('button');
+  btnSubmit.type = 'submit';
+  btnSubmit.className = 'btn btn-primary btn-sm';
+  btnSubmit.textContent = 'Simpan Perubahan Aplikasi 🚀';
+
+  btnRow.appendChild(btnCancel);
+  btnRow.appendChild(btnSubmit);
+  form.appendChild(btnRow);
+
+  modal.querySelector('#btnCloseEditAppModal').onclick = function () { backdrop.remove(); };
+
+  form.onsubmit = function (e) {
+    e.preventDefault();
+    var grades = [];
+    form.querySelectorAll('input[name="edit_gradeIds"]:checked').forEach(function (cb) { grades.push(cb.value); });
+    var subjects = [];
+    form.querySelectorAll('input[name="edit_subjectIds"]:checked').forEach(function (cb) { subjects.push(cb.value); });
+
+    if (!grades.length) { showToast('Pilih minimal satu kelas SD.', 'error'); return; }
+    if (!subjects.length) { showToast('Pilih minimal satu mata pelajaran.', 'error'); return; }
+
+    btnSubmit.disabled = true;
+    btnSubmit.textContent = '⏳ Menyimpan...';
+
+    var payload = {
+      identifier: u.contact || u.email,
+      appId: app.appId,
+      title: form.querySelector('#in_edit_title').value.trim(),
+      shortDescription: form.querySelector('#in_edit_short').value.trim(),
+      description: form.querySelector('#in_edit_desc').value.trim(),
+      learningObjective: form.querySelector('#in_edit_obj').value.trim(),
+      gradeIds: grades,
+      subjectIds: subjects,
+      categoryId: form.querySelector('#in_edit_catId').value,
+      tags: form.querySelector('#in_edit_tags').value.trim(),
+      targetUrl: form.querySelector('#in_edit_url').value.trim(),
+      thumbnailUrl: form.querySelector('#in_edit_thumb').value.trim()
+    };
+
+    callApi('api_teacherUpdateApp', payload).then(function (res) {
+      showToast(res.message || 'Aplikasi berhasil diperbarui!', 'success');
+      backdrop.remove();
+
+      var sess = getTeacherSession_();
+      if (sess && sess.apps) {
+        sess.apps.forEach(function (item) {
+          if (item.appId === app.appId) {
+            item.title = payload.title;
+            item.shortDescription = payload.shortDescription;
+            item.description = payload.description;
+            item.learningObjective = payload.learningObjective;
+            item.gradeIds = payload.gradeIds;
+            item.subjectIds = payload.subjectIds;
+            item.targetUrl = payload.targetUrl;
+            item.thumbnailUrl = payload.thumbnailUrl;
+          }
+        });
+        localStorage.setItem('eduapps_user_session', JSON.stringify(sess));
+      }
+      renderTeacherDashboard(document.getElementById('publicContent'));
+    }).catch(function (err) {
+      btnSubmit.disabled = false;
+      btnSubmit.textContent = 'Simpan Perubahan Aplikasi 🚀';
+      showToast(err.message || 'Gagal memperbarui aplikasi.', 'error');
+    });
+  };
+
+  modal.appendChild(form);
+  backdrop.appendChild(modal);
+  document.body.appendChild(backdrop);
 }
 
 document.addEventListener('DOMContentLoaded', function () {
@@ -2410,6 +2794,7 @@ document.addEventListener('DOMContentLoaded', function () {
     }
   });
 
+  syncNavAuthButton();
   initPublicApp();
 });
   </script>
