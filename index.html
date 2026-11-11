@@ -2096,7 +2096,7 @@ function trackPlay(appId, slug) {
 
 /* ---------- HELPER BERBAGI UNIVERSAL (NATIVE SHARE API) ---------- */
 function triggerNativeShare(app) {
-  var shareUrl = window.location.origin + window.location.pathname + '#/detail/' + encodeURIComponent(app.slug || app.appId);
+  var shareUrl = window.location.origin + '/share/' + encodeURIComponent(app.slug || app.appId);
   var shareData = {
     title: app.title + ' — Tirtomoyo EduApps',
     text: 'Ayo coba media pembelajaran "' + app.title + '" karya ' + (app.creatorDisplayName || 'Guru SD') + ' di Tirtomoyo EduApps:\n',
@@ -2123,8 +2123,13 @@ function initMobileStatsSlider() {
   var dots = document.querySelectorAll('#statsDotsWrap .stats-dot');
   if (!track || dots.length === 0) return;
 
+  if (window._statsSliderInterval) {
+    clearInterval(window._statsSliderInterval);
+    window._statsSliderInterval = null;
+  }
+
   var currentIdx = 0;
-  var totalItems = 3;
+  var totalItems = dots.length;
   var isUserInteracting = false;
   var interactionTimeout = null;
 
@@ -2137,11 +2142,21 @@ function initMobileStatsSlider() {
   }
 
   track.addEventListener('scroll', function () {
-    var scrollLeft = track.scrollLeft;
-    var width = track.clientWidth || 1;
-    var activeIdx = Math.round(scrollLeft / width);
-    if (activeIdx >= 0 && activeIdx < totalItems) {
-      updateDots(activeIdx);
+    var boxes = track.querySelectorAll('.stat-box');
+    if (!boxes.length) return;
+    var trackCenter = track.scrollLeft + (track.clientWidth / 2);
+    var closestIdx = 0;
+    var minDiff = Infinity;
+    boxes.forEach(function (box, i) {
+      var boxCenter = box.offsetLeft + (box.clientWidth / 2);
+      var diff = Math.abs(trackCenter - boxCenter);
+      if (diff < minDiff) {
+        minDiff = diff;
+        closestIdx = i;
+      }
+    });
+    if (closestIdx !== currentIdx && closestIdx >= 0 && closestIdx < totalItems) {
+      updateDots(closestIdx);
     }
   }, { passive: true });
 
@@ -2159,15 +2174,26 @@ function initMobileStatsSlider() {
   dots.forEach(function (dot, idx) {
     dot.onclick = function () {
       pauseInteraction();
-      track.scrollTo({ left: idx * track.clientWidth, behavior: 'smooth' });
+      var boxes = track.querySelectorAll('.stat-box');
+      if (boxes[idx]) {
+        track.scrollTo({ left: boxes[idx].offsetLeft, behavior: 'smooth' });
+      } else {
+        track.scrollTo({ left: idx * track.clientWidth, behavior: 'smooth' });
+      }
       updateDots(idx);
     };
   });
 
-  setInterval(function () {
+  window._statsSliderInterval = setInterval(function () {
     if (isUserInteracting) return;
     var nextIdx = (currentIdx + 1) % totalItems;
-    track.scrollTo({ left: nextIdx * track.clientWidth, behavior: 'smooth' });
+    var boxes = track.querySelectorAll('.stat-box');
+    if (boxes[nextIdx]) {
+      track.scrollTo({ left: boxes[nextIdx].offsetLeft, behavior: 'smooth' });
+    } else {
+      track.scrollTo({ left: nextIdx * track.clientWidth, behavior: 'smooth' });
+    }
+    updateDots(nextIdx);
   }, 3500);
 }
 
