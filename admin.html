@@ -374,11 +374,11 @@ function createThumbnailUploadField(name, labelText, initialUrl) {
     btnChoose.textContent = '⏳ Mengunggah ke Drive...';
     statusSpan.textContent = 'Memproses & mengunggah "' + file.name + '"...';
 
-    compressImageFile_(file, 1280, 0.82).then(function (result) {
+    compressImageFile_(file, 1280, 0.78).then(function (result) {
       return callApi('api_uploadThumbnail', {
         base64Data: result.dataUrl,
         mimeType: result.mimeType,
-        fileName: file.name
+        fileName: result.fileName
       });
     }).then(function (res) {
       btnChoose.disabled = false;
@@ -442,10 +442,14 @@ function compressImageFile_(file, maxWidth, quality) {
         canvas.width = w;
         canvas.height = h;
         var ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fillRect(0, 0, w, h);
         ctx.drawImage(img, 0, 0, w, h);
-        var outMime = (file.type === 'image/png') ? 'image/png' : 'image/jpeg';
-        var dataUrl = canvas.toDataURL(outMime, quality || 0.82);
-        resolve({ dataUrl: dataUrl, mimeType: outMime });
+        var outMime = 'image/jpeg';
+        var dataUrl = canvas.toDataURL(outMime, quality || 0.78);
+        var safeBase = (file.name || 'thumbnail').replace(/\.[^/.]+$/, '').replace(/[^a-zA-Z0-9_-]/g, '_');
+        var cleanFileName = safeBase + '.jpg';
+        resolve({ dataUrl: dataUrl, mimeType: outMime, fileName: cleanFileName });
       };
       img.src = e.target.result;
     };
@@ -741,11 +745,12 @@ function loadAdminSubmissionsData(statusFilter) {
 
     res.items.forEach(function (s) {
       var tr = document.createElement('tr');
+      tr.id = 'row_sub_' + s.submissionId;
       tr.innerHTML = '<td style="white-space:nowrap;" class="small">' + formatDateId(s.submittedAt) + '</td>' +
         '<td><strong>' + escapeHtml(s.title) + '</strong><br><span class="code small">' + escapeHtml(s.submissionId) + '</span></td>' +
         '<td>' + escapeHtml(s.creatorName) + '<br><span class="muted small">' + escapeHtml(s.schoolName) + '</span></td>' +
         '<td><span class="small">' + escapeHtml((s.subjectLabels || []).join(', ')) + '</span><br><span class="muted small">' + escapeHtml((s.gradeLabels || []).join(', ')) + '</span></td>' +
-        '<td><span class="status st-' + s.status + '">' + s.status + '</span></td>' +
+        '<td><span class="status st-' + s.status + '" id="status_badge_' + s.submissionId + '">' + s.status + '</span></td>' +
         '<td><button class="btn btn-secondary btn-sm btn-act">Buka</button></td>';
 
       tr.querySelector('.btn-act').onclick = function () {
@@ -932,17 +937,39 @@ function openSubmissionDetailModal(submissionId) {
 }
 
 function submitReviewAction(submissionId, action, reviewNote, publish, backdrop) {
+  if (backdrop && backdrop.parentNode) {
+    backdrop.parentNode.removeChild(backdrop);
+  }
+
+  var targetStatus = {
+    START_REVIEW: 'IN_REVIEW',
+    REQUEST_REVISION: 'NEEDS_REVISION',
+    APPROVE: 'APPROVED',
+    REJECT: 'REJECTED'
+  }[action] || action;
+
+  var badge = document.getElementById('status_badge_' + submissionId);
+  if (badge) {
+    badge.className = 'status st-' + targetStatus;
+    badge.textContent = targetStatus;
+  }
+  showToast('Status berhasil diubah menjadi ' + targetStatus, 'success');
+
   callApi('api_adminReviewSubmission', {
     submissionId: submissionId,
     action: action,
     reviewNote: reviewNote,
     publish: publish
-  }).then(function (res) {
-    showToast('Tindakan berhasil diproses: ' + res.status, 'success');
-    if (backdrop && backdrop.parentNode) backdrop.parentNode.removeChild(backdrop);
-    loadAdminSubmissionsData('');
+  }).then(function () {
+    var bSub = document.getElementById('badgeSubCount');
+    if (bSub && bSub.textContent) {
+      var n = parseInt(bSub.textContent, 10);
+      if (n > 1) bSub.textContent = n - 1;
+      else bSub.style.display = 'none';
+    }
   }).catch(function (err) {
-    showToast(err.message || 'Gagal memproses aksi review.', 'error');
+    showToast('Gagal sinkronisasi ke server: ' + (err.message || 'Terjadi kesalahan'), 'error');
+    loadAdminSubmissionsData('');
   });
 }
 
@@ -1256,14 +1283,16 @@ function openEditSubmissionModal(s, onSuccess) {
       categoryId: s.category ? s.category.id : ''
     };
 
+    document.body.removeChild(backdrop);
+    showToast('Menyimpan perubahan metadata...', 'info');
+
     callApi('api_adminUpdateSubmission', payload).then(function (res) {
-      showToast(res.message || 'Perubahan pengajuan tersimpan.', 'success');
-      document.body.removeChild(backdrop);
+      showToast(res.message || 'Perubahan pengajuan berhasil disimpan!', 'success');
       if (onSuccess) onSuccess();
+      else loadAdminSubmissionsData('');
     }).catch(function (err) {
-      btnSave.disabled = false;
-      btnSave.textContent = 'Simpan Perubahan Pengajuan';
       showToast(err.message || 'Gagal menyimpan pengajuan.', 'error');
+      loadAdminSubmissionsData('');
     });
   };
 
