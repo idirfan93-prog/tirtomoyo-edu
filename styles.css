@@ -544,36 +544,6 @@ tr:last-child td { border-bottom: 0; }
   }
 }
 
-/* ---------- Halaman Cek Status & Form Revisi Mandiri Guru ---------- */
-.status-badge-lg {
-  display: inline-flex;
-  align-items: center;
-  gap: .4rem;
-  padding: .35rem .85rem;
-  border-radius: 999px;
-  font-weight: 700;
-  font-size: .9rem;
-  border: 1px solid;
-}
-.revision-box {
-  background: #FFF6ED;
-  border: 1.5px solid #F9DBAF;
-  border-radius: 10px;
-  padding: 1rem 1.25rem;
-  margin-bottom: 1.25rem;
-  color: #7A271A;
-}
-.revision-box h4 {
-  margin: 0 0 .35rem;
-  color: #C4320A;
-  font-size: .95rem;
-}
-.revision-box .note-text {
-  white-space: pre-wrap;
-  font-size: .9rem;
-  line-height: 1.5;
-}
-
 /* ---------- Mode Pemutar Aplikasi (Kiosk / Full Viewport) ---------- */
 body.player-mode {
   overflow: hidden !important;
@@ -746,11 +716,4 @@ body.player-mode #publicContent {
   .teacher-app-actions .btn {
     flex: 1;
   }
-}
-
-/* ---------- 4. FORM KEAMANAN GANTI PASSWORD ---------- */
-.profile-security-card {
-  border-left: 4px solid var(--blue);
-  background: var(--surface);
-  margin-top: 1.5rem;
 }
