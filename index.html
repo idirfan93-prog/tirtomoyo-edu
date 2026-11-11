@@ -1253,43 +1253,76 @@ function createAppCard(app) {
   } else {
     thumb.appendChild(createPlaceholderThumb(app.title, app.category ? app.category.label : ''));
   }
+
+  var overlay = document.createElement('div');
+  overlay.className = 'thumb-overlay-top';
+
+  var leftWrap = document.createElement('div');
+  leftWrap.className = 'thumb-badges-left';
+
+  if (app.subjectLabels && app.subjectLabels.length > 0) {
+    var sBadge = document.createElement('span');
+    sBadge.className = 'thumb-badge subject';
+    sBadge.textContent = app.subjectLabels[0];
+    leftWrap.appendChild(sBadge);
+
+    if (app.subjectLabels.length > 1) {
+      var sCount = document.createElement('span');
+      sCount.className = 'thumb-badge counter';
+      sCount.textContent = '+' + (app.subjectLabels.length - 1);
+      leftWrap.appendChild(sCount);
+    }
+  }
+
+  if (app.gradeLabels && app.gradeLabels.length > 0) {
+    var cleanGrades = app.gradeLabels.map(function (g) {
+      return String(g).replace(/^SD\s+/i, '');
+    });
+
+    var gBadge = document.createElement('span');
+    gBadge.className = 'thumb-badge grade';
+
+    if (cleanGrades.length >= 6) {
+      gBadge.textContent = 'Semua Kelas';
+      leftWrap.appendChild(gBadge);
+    } else {
+      gBadge.textContent = cleanGrades[0];
+      leftWrap.appendChild(gBadge);
+
+      if (cleanGrades.length > 1) {
+        var gCount = document.createElement('span');
+        gCount.className = 'thumb-badge counter';
+        gCount.textContent = '+' + (cleanGrades.length - 1);
+        leftWrap.appendChild(gCount);
+      }
+    }
+  }
+  overlay.appendChild(leftWrap);
+
+  var rightWrap = document.createElement('div');
+  rightWrap.className = 'thumb-badges-right';
+
+  if (app.featured) {
+    var starBadge = document.createElement('span');
+    starBadge.className = 'thumb-badge star';
+    starBadge.textContent = '★ Pilihan';
+    rightWrap.appendChild(starBadge);
+  }
+  if (app.isVerified) {
+    var vBadge = document.createElement('span');
+    vBadge.className = 'thumb-badge verified';
+    vBadge.textContent = '✔ Terverifikasi';
+    rightWrap.appendChild(vBadge);
+  }
+  if (rightWrap.childNodes.length > 0) {
+    overlay.appendChild(rightWrap);
+  }
+
+  thumb.appendChild(overlay);
   card.appendChild(thumb);
 
   var body = document.createElement('div');
   body.className = 'body';
-
-  var badges = document.createElement('div');
-  badges.className = 'badges';
-
-  if (app.isVerified) {
-    var bVer = document.createElement('span');
-    bVer.className = 'badge verified';
-    bVer.style.background = '#ECFDF3';
-    bVer.style.color = '#027A48';
-    bVer.style.borderColor = '#ABEFC6';
-    bVer.textContent = '✔ Terverifikasi';
-    badges.appendChild(bVer);
-  }
-  if (app.subjectLabels && app.subjectLabels[0]) {
-    var b1 = document.createElement('span');
-    b1.className = 'badge';
-    b1.textContent = app.subjectLabels[0];
-    badges.appendChild(b1);
-  }
-  if (app.gradeLabels && app.gradeLabels.length > 0) {
-    var b2 = document.createElement('span');
-    b2.className = 'badge grade';
-    var cleanGrades = app.gradeLabels.map(function (g) { return String(g).replace(/^SD\s+/i, ''); });
-    b2.textContent = cleanGrades.length >= 6 ? 'Semua Kelas' : cleanGrades.join(', ');
-    badges.appendChild(b2);
-  }
-  if (app.featured) {
-    var bStar = document.createElement('span');
-    bStar.className = 'badge star';
-    bStar.textContent = '★ Pilihan';
-    badges.appendChild(bStar);
-  }
-  body.appendChild(badges);
 
   var h3 = document.createElement('h3');
   h3.textContent = app.title;
@@ -1297,7 +1330,7 @@ function createAppCard(app) {
 
   var desc = document.createElement('p');
   desc.className = 'desc';
-  desc.textContent = app.shortDescription;
+  desc.textContent = app.shortDescription || '';
   body.appendChild(desc);
 
   var metaDiv = document.createElement('div');
@@ -1318,7 +1351,6 @@ function createAppCard(app) {
   metaDiv.appendChild(playSpan);
 
   body.appendChild(metaDiv);
-
   card.appendChild(body);
 
   var foot = document.createElement('div');
