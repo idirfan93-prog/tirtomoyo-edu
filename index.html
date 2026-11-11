@@ -395,6 +395,9 @@ function handlePublicRoute() {
   var content = document.getElementById('publicContent');
   if (!content) return;
 
+  var isPlayRoute = (hash.indexOf('#/play/') === 0);
+  document.body.classList.toggle('player-mode', isPlayRoute);
+
   var nav = document.getElementById('mainNav');
   if (nav) nav.classList.remove('open');
 
@@ -1139,32 +1142,32 @@ function renderPlayPage(container, slugOrId) {
   callApi('api_getPublicAppDetail', { slug: slugOrId, appId: slugOrId }).then(function (app) {
     container.innerHTML = '';
 
-    // Bilah Kontrol Atas (Header Player)
     var topBar = document.createElement('div');
-    topBar.style.cssText = 'background:var(--navy);color:#fff;padding:.65rem 1rem;display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap;';
+    topBar.style.cssText = 'background:var(--navy);color:#fff;height:46px;min-height:46px;padding:0 .75rem;display:flex;align-items:center;justify-content:space-between;gap:.6rem;flex-wrap:nowrap;z-index:10;box-shadow:0 2px 8px rgba(0,0,0,.15);';
 
     var leftCol = document.createElement('div');
-    leftCol.style.cssText = 'display:flex;align-items:center;gap:.75rem;';
+    leftCol.style.cssText = 'display:flex;align-items:center;gap:.6rem;min-width:0;flex:1;';
 
     var btnBack = document.createElement('a');
     btnBack.href = '#/detail/' + encodeURIComponent(app.slug || app.appId);
     btnBack.className = 'btn btn-secondary btn-sm';
-    btnBack.style.cssText = 'background:rgba(255,255,255,.15);color:#fff;border-color:rgba(255,255,255,.3);text-decoration:none;';
+    btnBack.style.cssText = 'background:rgba(255,255,255,.15);color:#fff;border-color:rgba(255,255,255,.25);min-height:32px;padding:.2rem .65rem;border-radius:8px;text-decoration:none;font-size:.82rem;flex-shrink:0;white-space:nowrap;';
     btnBack.innerHTML = '← Kembali';
 
     var titleSpan = document.createElement('span');
-    titleSpan.style.cssText = 'font-weight:700;font-size:1.05rem;';
+    titleSpan.style.cssText = 'font-weight:700;font-size:.9rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;';
     titleSpan.textContent = app.title;
+    titleSpan.title = app.title;
 
     leftCol.appendChild(btnBack);
     leftCol.appendChild(titleSpan);
 
     var rightCol = document.createElement('div');
-    rightCol.style.cssText = 'display:flex;align-items:center;gap:.5rem;';
+    rightCol.style.cssText = 'display:flex;align-items:center;gap:.4rem;flex-shrink:0;';
 
     var btnFull = document.createElement('button');
     btnFull.className = 'btn btn-secondary btn-sm';
-    btnFull.style.cssText = 'background:rgba(255,255,255,.15);color:#fff;border-color:rgba(255,255,255,.3);';
+    btnFull.style.cssText = 'background:rgba(255,255,255,.15);color:#fff;border-color:rgba(255,255,255,.25);min-height:32px;padding:.2rem .65rem;border-radius:8px;font-size:.82rem;white-space:nowrap;';
     btnFull.innerHTML = '⛶ Layar Penuh';
 
     var btnExt = document.createElement('a');
@@ -1172,7 +1175,7 @@ function renderPlayPage(container, slugOrId) {
     btnExt.target = '_blank';
     btnExt.rel = 'noopener noreferrer';
     btnExt.className = 'btn btn-secondary btn-sm';
-    btnExt.style.cssText = 'background:rgba(255,255,255,.15);color:#fff;border-color:rgba(255,255,255,.3);text-decoration:none;';
+    btnExt.style.cssText = 'background:rgba(255,255,255,.15);color:#fff;border-color:rgba(255,255,255,.25);min-height:32px;padding:.2rem .65rem;border-radius:8px;font-size:.82rem;text-decoration:none;white-space:nowrap;';
     btnExt.innerHTML = '↗ Buka Asli';
 
     rightCol.appendChild(btnFull);
@@ -1182,10 +1185,9 @@ function renderPlayPage(container, slugOrId) {
     topBar.appendChild(rightCol);
     container.appendChild(topBar);
 
-    // Wadah Iframe Responsif
     var frameWrap = document.createElement('div');
     frameWrap.id = 'playerFrameWrap';
-    frameWrap.style.cssText = 'width:100%;height:calc(100vh - 120px);min-height:560px;background:#000;position:relative;';
+    frameWrap.style.cssText = 'width:100%;height:calc(100dvh - 46px);flex:1;background:#000;position:relative;overflow:hidden;';
 
     var iframe = document.createElement('iframe');
     iframe.src = app.targetUrl;
