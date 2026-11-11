@@ -2164,18 +2164,18 @@ function renderSubmissionSuccess(res) {
   wrap.innerHTML = '<div class="panel success-box">' +
     '<div style="font-size:3rem;margin-bottom:.5rem;">🎉</div>' +
     '<h2>Pengajuan Berhasil & Langsung Tayang!</h2>' +
-    '<p class="muted">Aplikasi Anda telah berhasil dipublikasikan di katalog publik. Catat nomor referensi Anda:</p>' +
+    '<p class="muted">Aplikasi Anda telah berhasil dipublikasikan di katalog publik. Nomor registrasi karya Anda:</p>' +
     '<p><span class="code" style="font-size:1.4rem;padding:.5rem 1.25rem;font-weight:800;color:var(--navy);letter-spacing:.05em;">' + escapeHtml(res.submissionId) + '</span></p>' +
     '<div class="alert alert-info" style="text-align:left;margin-top:1.5rem;">' +
-    '<strong>Informasi Kurasi & Status:</strong>' +
+    '<strong>Informasi Kurasi & Manajemen Karya:</strong>' +
     '<ul style="margin:.4rem 0 0;padding-left:1.2rem;">' +
-    '<li>Karya Anda langsung aktif di katalog publik dan siap dimainkan siswa.</li>' +
-    '<li>Admin kurator akan meninjau kelayakan aplikasi untuk menyematkan lencana <strong>✔ Terverifikasi</strong>.</li>' +
-    '<li>Gunakan nomor referensi di atas pada menu <strong>Cek Status</strong> untuk memantau proses kurasi atau mengirimkan perbaikan mandiri.</li>' +
+    '<li>Karya Anda sudah aktif di katalog dan dapat langsung dimainkan atau dibagikan.</li>' +
+    '<li>Tim kurator akan meninjau kelayakan media untuk penyematan lencana <strong>✔ Terverifikasi</strong>.</li>' +
+    '<li>Karya ini otomatis terhubung ke akun Anda. Buka <strong>Dasbor Guru</strong> untuk memantau status kurasi, melihat statistik pemutaran, atau melakukan perbaikan isi.</li>' +
     '</ul>' +
     '</div>' +
     '<div style="margin-top:1.5rem;display:flex;gap:.75rem;justify-content:center;flex-wrap:wrap;">' +
-    '<a href="#/status" class="btn btn-primary">Pantau Status Pengajuan</a>' +
+    '<a href="#/dashboard-guru" class="btn btn-primary">Buka Dasbor Guru</a>' +
     '<a href="#/katalog" class="btn btn-secondary">Lihat di Katalog</a>' +
     '</div>' +
     '</div>';
@@ -2517,71 +2517,82 @@ function refreshTeacherDashboardApps(container, u) {
   var listWrap = container.querySelector('#teacherAppListWrap');
   if (!listWrap) return;
 
-  callApi('api_loginUnified', { identifier: u.contact || u.email, passwordOrNpsn: u.hasCustomPassword ? 'DUMMY' : (u.schoolNpsn || '') }).catch(function () {
-    return null;
-  });
-
   var sess = getTeacherSession_();
   var apps = (sess && sess.apps) ? sess.apps : [];
 
-  var totalPlays = 0;
-  var totalVerified = 0;
+  var updateView = function (currentApps) {
+    var totalPlays = 0;
+    var totalVerified = 0;
 
-  apps.forEach(function (a) {
-    totalPlays += (a.playCount || 0);
-    if (a.isVerified) totalVerified++;
-  });
+    currentApps.forEach(function (a) {
+      totalPlays += (a.playCount || 0);
+      if (a.isVerified) totalVerified++;
+    });
 
-  var stTot = container.querySelector('#tStatTotal');
-  var stVer = container.querySelector('#tStatVerified');
-  var stPly = container.querySelector('#tStatPlays');
-  if (stTot) stTot.textContent = apps.length;
-  if (stVer) stVer.textContent = totalVerified;
-  if (stPly) stPly.textContent = totalPlays + 'x';
+    var stTot = container.querySelector('#tStatTotal');
+    var stVer = container.querySelector('#tStatVerified');
+    var stPly = container.querySelector('#tStatPlays');
+    if (stTot) stTot.textContent = currentApps.length;
+    if (stVer) stVer.textContent = totalVerified;
+    if (stPly) stPly.textContent = totalPlays + 'x';
 
-  if (!apps.length) {
-    listWrap.innerHTML = '<div class="state"><p class="muted">Belum ada aplikasi yang Anda daftarkan.</p><a href="#/ajukan" class="btn btn-primary btn-sm" style="margin-top:.5rem;">Mulai Ajukan Aplikasi</a></div>';
-    return;
-  }
+    if (!currentApps.length) {
+      listWrap.innerHTML = '<div class="state"><p class="muted">Belum ada aplikasi yang Anda daftarkan.</p><a href="#/ajukan" class="btn btn-primary btn-sm" style="margin-top:.5rem;">Mulai Ajukan Aplikasi</a></div>';
+      return;
+    }
 
-  listWrap.innerHTML = '';
-  apps.forEach(function (app) {
-    var item = document.createElement('div');
-    item.className = 'teacher-app-item';
+    listWrap.innerHTML = '';
+    currentApps.forEach(function (app) {
+      var item = document.createElement('div');
+      item.className = 'teacher-app-item';
 
-    var statusHtml = app.isVerified
-      ? '<span class="status st-APPROVED" style="font-size:.75rem;">✔ Terverifikasi</span>'
-      : (app.status === 'PUBLISHED' ? '<span class="status st-APPROVED" style="font-size:.75rem;">Terbit (Kurasi)</span>' : '<span class="status st-' + app.status + '" style="font-size:.75rem;">' + app.status + '</span>');
+      var statusHtml = app.isVerified
+        ? '<span class="status st-APPROVED" style="font-size:.75rem;">✔ Terverifikasi</span>'
+        : (app.status === 'PUBLISHED' ? '<span class="status st-APPROVED" style="font-size:.75rem;">Terbit (Kurasi)</span>' : '<span class="status st-' + app.status + '" style="font-size:.75rem;">' + app.status + '</span>');
 
-    var thumbSrc = app.thumbnailUrl || '';
-    item.innerHTML = (thumbSrc
-      ? '<img src="' + escapeHtml(thumbSrc) + '" class="teacher-app-thumb" alt="' + escapeHtml(app.title) + '">'
-      : '<div class="teacher-app-thumb placeholder" style="font-size:.8rem;padding:.25rem;">' + escapeHtml(app.title) + '</div>') +
-      '<div class="teacher-app-info">' +
-      '<div style="display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;margin-bottom:.2rem;">' +
-      statusHtml +
-      '<span class="small muted">▶ ' + (app.playCount || 0) + 'x dimainkan</span>' +
-      '</div>' +
-      '<h3>' + escapeHtml(app.title) + '</h3>' +
-      '<p class="small muted" style="margin:0;">' + escapeHtml((app.gradeLabels || []).join(', ')) + ' • ' + escapeHtml((app.subjectLabels || []).join(', ')) + '</p>' +
-      (app.reviewNotes ? '<div class="small" style="color:var(--warning);margin-top:.25rem;"><strong>Catatan Kurator:</strong> ' + escapeHtml(app.reviewNotes) + '</div>' : '') +
-      '</div>' +
-      '<div class="teacher-app-actions">' +
-      '<a href="#/detail/' + encodeURIComponent(app.slug || app.appId) + '" class="btn btn-secondary btn-sm">👁️ Lihat</a>' +
-      '<button type="button" class="btn btn-primary btn-sm btn-edit-app">✏️ Edit Lengkap</button>' +
-      '<button type="button" class="btn btn-secondary btn-sm btn-share-app">📤</button>' +
-      '</div>';
+      var thumbSrc = app.thumbnailUrl || '';
+      item.innerHTML = (thumbSrc
+        ? '<img src="' + escapeHtml(thumbSrc) + '" class="teacher-app-thumb" alt="' + escapeHtml(app.title) + '">'
+        : '<div class="teacher-app-thumb placeholder" style="font-size:.8rem;padding:.25rem;">' + escapeHtml(app.title) + '</div>') +
+        '<div class="teacher-app-info">' +
+        '<div style="display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;margin-bottom:.2rem;">' +
+        statusHtml +
+        '<span class="small muted">▶ ' + (app.playCount || 0) + 'x dimainkan</span>' +
+        '</div>' +
+        '<h3>' + escapeHtml(app.title) + '</h3>' +
+        '<p class="small muted" style="margin:0;">' + escapeHtml((app.gradeLabels || []).join(', ')) + ' • ' + escapeHtml((app.subjectLabels || []).join(', ')) + '</p>' +
+        (app.reviewNotes ? '<div class="small" style="color:var(--warning);margin-top:.25rem;"><strong>Catatan Kurator:</strong> ' + escapeHtml(app.reviewNotes) + '</div>' : '') +
+        '</div>' +
+        '<div class="teacher-app-actions">' +
+        '<a href="#/detail/' + encodeURIComponent(app.slug || app.appId) + '" class="btn btn-secondary btn-sm">👁️ Lihat</a>' +
+        '<button type="button" class="btn btn-primary btn-sm btn-edit-app">✏️ Edit Lengkap</button>' +
+        '<button type="button" class="btn btn-secondary btn-sm btn-share-app">📤</button>' +
+        '</div>';
 
-    item.querySelector('.btn-edit-app').onclick = function () {
-      openTeacherEditAppModal(app, u);
-    };
+      item.querySelector('.btn-edit-app').onclick = function () {
+        openTeacherEditAppModal(app, u);
+      };
 
-    item.querySelector('.btn-share-app').onclick = function () {
-      triggerNativeShare(app);
-    };
+      item.querySelector('.btn-share-app').onclick = function () {
+        triggerNativeShare(app);
+      };
 
-    listWrap.appendChild(item);
-  });
+      listWrap.appendChild(item);
+    });
+  };
+
+  updateView(apps);
+
+  callApi('api_getTeacherDashboard', { identifier: u.contact || u.email }).then(function (res) {
+    if (res && res.apps) {
+      if (sess) {
+        sess.apps = res.apps;
+        if (res.user) sess.user = res.user;
+        localStorage.setItem('eduapps_user_session', JSON.stringify(sess));
+      }
+      updateView(res.apps);
+    }
+  }).catch(function () {});
 }
 
 function openChangePasswordModal(userProfile) {
