@@ -1015,13 +1015,20 @@ function renderDetailPage(container, slugOrId) {
         badgeRow.appendChild(b);
       });
     }
-    if (app.gradeLabels) {
-      app.gradeLabels.forEach(function (g) {
+    if (app.gradeLabels && app.gradeLabels.length > 0) {
+      if (app.gradeLabels.length >= 6) {
         var b = document.createElement('span');
         b.className = 'badge grade';
-        b.textContent = g;
+        b.textContent = 'Semua Kelas';
         badgeRow.appendChild(b);
-      });
+      } else {
+        app.gradeLabels.forEach(function (g) {
+          var b = document.createElement('span');
+          b.className = 'badge grade';
+          b.textContent = g;
+          badgeRow.appendChild(b);
+        });
+      }
     }
     if (app.category) {
       var b = document.createElement('span');
@@ -1272,7 +1279,7 @@ function createAppCard(app) {
   if (app.gradeLabels && app.gradeLabels.length > 0) {
     var b2 = document.createElement('span');
     b2.className = 'badge grade';
-    b2.textContent = app.gradeLabels.join(', ');
+    b2.textContent = app.gradeLabels.length >= 6 ? 'Semua Kelas' : app.gradeLabels.join(', ');
     badges.appendChild(b2);
   }
   if (app.featured) {
