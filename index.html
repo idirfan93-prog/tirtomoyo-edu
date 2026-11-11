@@ -588,14 +588,21 @@ function buildHomePageDOM_(container, data) {
 
       var dailyHead = document.createElement('div');
       dailyHead.className = 'section-head';
-      dailyHead.innerHTML = '<div>' +
+      dailyHead.innerHTML = '<div style="display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;">' +
         '<h2 style="display:flex;align-items:center;gap:.5rem;margin:0;"><span>✨</span> Rekomendasi Pilihan Hari Ini</h2>' +
         '</div>' +
-        '<a href="#/katalog" class="small">Jelajahi Semua →</a>';
+        '<div style="display:flex;align-items:center;gap:1rem;">' +
+        '<a href="#/katalog" class="small" style="font-weight:600;text-decoration:none;">Jelajahi Semua →</a>' +
+        '<div class="daily-nav-ctrl">' +
+        '<button type="button" class="daily-nav-btn" id="dailyPrevBtn" aria-label="Geser ke kiri">◀</button>' +
+        '<button type="button" class="daily-nav-btn" id="dailyNextBtn" aria-label="Geser ke kanan">▶</button>' +
+        '</div>' +
+        '</div>';
       dailySec.appendChild(dailyHead);
 
       var scrollWrap = document.createElement('div');
       scrollWrap.className = 'daily-picks-scroll';
+      scrollWrap.id = 'dailyPicksTrack';
 
       data.dailyPicks.forEach(function (app) {
         var dCard = document.createElement('div');
@@ -609,10 +616,10 @@ function buildHomePageDOM_(container, data) {
 
         var body = '<div class="d-body">' +
           '<h4>' + escapeHtml(app.title) + '</h4>' +
-          '<div class="d-meta">👨‍🏫 ' + escapeHtml(app.creatorDisplayName || 'Guru SD') + '</div>' +
+          '<div class="d-meta">👨‍🏫 <strong>' + escapeHtml(app.creatorDisplayName || 'Guru SD') + '</strong></div>' +
           '<div class="d-meta">🏫 ' + escapeHtml(app.schoolDisplayName || 'Kecamatan Tirtomoyo') + '</div>' +
           '<div class="d-meta" style="color:var(--success);font-weight:600;margin-top:.2rem;">▶ ' + (app.playCount || 0) + 'x dimainkan</div>' +
-          '<a href="#/detail/' + encodeURIComponent(app.slug || app.appId) + '" class="btn btn-secondary btn-sm" style="margin-top:auto;width:100%;font-size:.82rem;padding:.35rem;">Buka Detail</a>' +
+          '<a href="#/detail/' + encodeURIComponent(app.slug || app.appId) + '" class="btn-detail">Buka Detail</a>' +
           '</div>';
 
         dCard.innerHTML = thumb + body;
@@ -621,6 +628,7 @@ function buildHomePageDOM_(container, data) {
 
       dailySec.appendChild(scrollWrap);
       mainContainer.appendChild(dailySec);
+      initDailyPicksCarousel();
     }
 
     if (data.subjects && data.subjects.length > 0) {
@@ -2196,6 +2204,59 @@ function initMobileStatsSlider() {
     }
     updateDots(nextIdx);
   }, 3500);
+}
+
+/* ---------- HELPER SLIDER REKOMENDASI PILIHAN (AUTO-SLIDE & CONTROLS) ---------- */
+function initDailyPicksCarousel() {
+  var track = document.getElementById('dailyPicksTrack');
+  var btnPrev = document.getElementById('dailyPrevBtn');
+  var btnNext = document.getElementById('dailyNextBtn');
+  if (!track) return;
+
+  if (window._dailyPicksInterval) {
+    clearInterval(window._dailyPicksInterval);
+    window._dailyPicksInterval = null;
+  }
+
+  var isHovered = false;
+
+  function getStep() {
+    var firstCard = track.querySelector('.daily-card');
+    return firstCard ? firstCard.clientWidth + 20 : 330;
+  }
+
+  function slideNext() {
+    var maxScroll = track.scrollWidth - track.clientWidth;
+    if (track.scrollLeft >= maxScroll - 10) {
+      track.scrollTo({ left: 0, behavior: 'smooth' });
+    } else {
+      track.scrollBy({ left: getStep(), behavior: 'smooth' });
+    }
+  }
+
+  function slidePrev() {
+    if (track.scrollLeft <= 10) {
+      track.scrollTo({ left: track.scrollWidth, behavior: 'smooth' });
+    } else {
+      track.scrollBy({ left: -getStep(), behavior: 'smooth' });
+    }
+  }
+
+  if (btnNext) btnNext.onclick = function () { isHovered = true; slideNext(); };
+  if (btnPrev) btnPrev.onclick = function () { isHovered = true; slidePrev(); };
+
+  track.addEventListener('mouseenter', function () { isHovered = true; });
+  track.addEventListener('mouseleave', function () { isHovered = false; });
+  track.addEventListener('touchstart', function () { isHovered = true; }, { passive: true });
+  track.addEventListener('touchend', function () {
+    setTimeout(function () { isHovered = false; }, 4000);
+  }, { passive: true });
+
+  window._dailyPicksInterval = setInterval(function () {
+    if (!isHovered) {
+      slideNext();
+    }
+  }, 3800);
 }
 
 /* ---------- HALAMAN CEK STATUS & FORM REVISI MANDIRI GURU ---------- */
