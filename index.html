@@ -23,6 +23,7 @@
         <a href="#/" class="navlink active">Beranda</a>
         <a href="#/katalog" class="navlink">Katalog</a>
         <a href="#/ajukan" class="navlink">Ajukan Aplikasi</a>
+        <a href="#/status" class="navlink">Cek Status</a>
         <a href="#/tentang" class="navlink">Tentang</a>
         <a href="admin.html" class="btn btn-sm btn-admin-header" style="background:var(--red);color:#fff;margin-left:.5rem;border-radius:8px;font-size:.85rem;padding:.35rem .85rem;text-decoration:none;">Masuk Admin</a>
       </nav>
@@ -39,23 +40,15 @@
 
   <!-- Site Footer -->
   <footer class="site-footer">
-    <div class="container">
+    <div class="container" style="grid-template-columns: 1.5fr 1fr;">
       <div>
         <h3>Tirtomoyo EduApps</h3>
         <p class="small">Katalog aplikasi pendidikan karya guru-guru Sekolah Dasar di Kecamatan Tirtomoyo, Kabupaten Wonogiri. Portal memfasilitasi penemuan inovasi digital pembelajaran terkurasi.</p>
       </div>
       <div>
-        <h3>Menu Cepat</h3>
-        <p class="small"><a href="#/">Beranda</a><br>
-        <a href="#/katalog">Katalog Aplikasi SD</a><br>
-        <a href="#/ajukan">Formulir Pengajuan Guru</a><br>
-        <a href="#/tentang">Tentang Portal</a></p>
-      </div>
-      <div>
         <h3>Pengelola & Kurasi</h3>
-        <p class="small">Dikelola oleh Tim Pengembang & Guru Kecamatan Tirtomoyo.<br>
-        Khusus jenjang Sekolah Dasar kelas 1–6.</p>
-        <p class="small"><a href="admin.html" style="color:var(--muted);text-decoration:none;" title="Akses Admin">🔐 Panel Pengelola</a></p>
+        <p class="small">Dikelola oleh Tim Pengembang & Guru Sekolah Dasar Kecamatan Tirtomoyo.<br>
+        Khusus jenjang Sekolah Dasar.</p>
       </div>
     </div>
   </footer>
@@ -377,6 +370,13 @@ function loadPublicInitialData() {
   });
 }
 
+function navigateTo(hash) {
+  if (window.location.hash !== hash) {
+    window.location.hash = hash;
+  }
+  handlePublicRoute();
+}
+
 function handlePublicRoute() {
   var hash = window.location.hash || '#/';
   var content = document.getElementById('publicContent');
@@ -403,6 +403,9 @@ function handlePublicRoute() {
     var slugOrId = hash.replace('#/play/', '').trim();
     renderPlayPage(content, slugOrId);
   } else if (hash === '#/ajukan') {
+    renderSubmissionPage(content);
+  } else if (hash === '#/status') {
+    renderStatusPage(content);
   } else if (hash === '#/tentang') {
     renderAboutPage(content);
   } else {
@@ -511,6 +514,73 @@ function renderHomePage(container) {
 
     var mainContainer = document.createElement('div');
     mainContainer.className = 'container';
+
+    if (data.stats) {
+      var statsWrap = document.createElement('div');
+      statsWrap.className = 'stats-banner';
+      statsWrap.innerHTML = '<div class="stats-grid" id="statsSliderTrack">' +
+        '<div class="stat-box">' +
+        '<div class="stat-box-icon">📦</div>' +
+        '<div class="stat-box-content"><div class="stat-box-num">' + (data.stats.totalApps || 0) + '</div><div class="stat-box-label">Aplikasi Terbit</div></div>' +
+        '</div>' +
+        '<div class="stat-box">' +
+        '<div class="stat-box-icon" style="background:#ECFDF3;color:var(--success);">🏫</div>' +
+        '<div class="stat-box-content"><div class="stat-box-num">' + (data.stats.totalSchools || 0) + '</div><div class="stat-box-label">SD Berkontribusi</div></div>' +
+        '</div>' +
+        '<div class="stat-box">' +
+        '<div class="stat-box-icon" style="background:#FFFAEB;color:#B54708;">👨‍🏫</div>' +
+        '<div class="stat-box-content"><div class="stat-box-num">' + (data.stats.totalTeachers || 0) + '</div><div class="stat-box-label">Guru Pengembang</div></div>' +
+        '</div>' +
+        '</div>' +
+        '<div class="stats-dots" id="statsDotsWrap">' +
+        '<div class="stats-dot active"></div><div class="stats-dot"></div><div class="stats-dot"></div>' +
+        '</div>';
+
+      mainContainer.appendChild(statsWrap);
+      initMobileStatsSlider();
+    }
+
+    if (data.dailyPicks && data.dailyPicks.length > 0) {
+      var dailySec = document.createElement('section');
+      dailySec.className = 'section';
+      dailySec.style.padding = '1rem 0 1.5rem';
+
+      var dailyHead = document.createElement('div');
+      dailyHead.className = 'section-head';
+      dailyHead.innerHTML = '<div>' +
+        '<h2 style="display:flex;align-items:center;gap:.5rem;margin:0;"><span>✨</span> Rekomendasi Pilihan Hari Ini</h2>' +
+        '<p class="muted small" style="margin:0;">5 rekomendasi acak yang berganti otomatis setiap hari.</p>' +
+        '</div>' +
+        '<a href="#/katalog" class="small">Jelajahi Semua →</a>';
+      dailySec.appendChild(dailyHead);
+
+      var scrollWrap = document.createElement('div');
+      scrollWrap.className = 'daily-picks-scroll';
+
+      data.dailyPicks.forEach(function (app) {
+        var dCard = document.createElement('div');
+        dCard.className = 'daily-card';
+
+        var thumb = '<div class="d-thumb">' +
+          (app.thumbnailUrl
+            ? '<img src="' + escapeHtml(app.thumbnailUrl) + '" alt="' + escapeHtml(app.title) + '" loading="lazy">'
+            : '<div class="placeholder" style="font-size:.85rem;padding:.5rem;">' + escapeHtml(app.title) + '</div>') +
+          '</div>';
+
+        var body = '<div class="d-body">' +
+          '<h4>' + escapeHtml(app.title) + '</h4>' +
+          '<div class="d-meta">👨‍🏫 ' + escapeHtml(app.creatorDisplayName || 'Guru SD') + '</div>' +
+          '<div class="d-meta" style="color:var(--success);font-weight:600;">▶ ' + (app.playCount || 0) + 'x dimainkan</div>' +
+          '<a href="#/detail/' + encodeURIComponent(app.slug || app.appId) + '" class="btn btn-secondary btn-sm" style="margin-top:auto;width:100%;font-size:.82rem;padding:.3rem;">Buka Detail</a>' +
+          '</div>';
+
+        dCard.innerHTML = thumb + body;
+        scrollWrap.appendChild(dCard);
+      });
+
+      dailySec.appendChild(scrollWrap);
+      mainContainer.appendChild(dailySec);
+    }
 
     if (data.subjects && data.subjects.length > 0) {
       var catSec = document.createElement('section');
@@ -956,6 +1026,9 @@ function renderDetailPage(container, slugOrId) {
     launchBtn.href = '#/play/' + encodeURIComponent(app.slug || app.appId);
     launchBtn.className = 'btn btn-primary launch';
     launchBtn.innerHTML = '🎮 Mainkan di Portal Sekarang';
+    launchBtn.onclick = function () {
+      trackPlay(app.appId, app.slug);
+    };
     actPanel.appendChild(launchBtn);
 
     var externalBtn = document.createElement('a');
@@ -966,33 +1039,26 @@ function renderDetailPage(container, slugOrId) {
     externalBtn.style.width = '100%';
     externalBtn.style.marginTop = '.5rem';
     externalBtn.innerHTML = '↗ Buka di Tab Terpisah';
+    externalBtn.onclick = function () {
+      trackPlay(app.appId, app.slug);
+    };
     actPanel.appendChild(externalBtn);
 
-    // Tombol Salin Tautan Berbagi langsung dari browser
     var shareBtn = document.createElement('button');
     shareBtn.type = 'button';
     shareBtn.className = 'btn btn-secondary btn-sm';
     shareBtn.style.width = '100%';
     shareBtn.style.marginTop = '.65rem';
-    shareBtn.innerHTML = '📋 Salin Tautan Berbagi (WhatsApp)';
+    shareBtn.innerHTML = '📤 Bagikan Aplikasi';
     shareBtn.onclick = function () {
-      var shareUrl = window.location.href;
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(shareUrl).then(function () {
-          showToast('Tautan aplikasi berhasil disalin ke clipboard!', 'success');
-        }).catch(function () {
-          prompt('Salin tautan aplikasi ini:', shareUrl);
-        });
-      } else {
-        prompt('Salin tautan aplikasi ini:', shareUrl);
-      }
+      triggerNativeShare(app);
     };
     actPanel.appendChild(shareBtn);
 
     var notice = document.createElement('p');
     notice.className = 'help';
     notice.style.marginTop = '.65rem';
-    notice.textContent = 'Aplikasi akan terbuka pada tab baru di browser Anda.';
+    notice.textContent = 'Aplikasi dapat dimainkan langsung di portal atau di tab baru.';
     actPanel.appendChild(notice);
     colRight.appendChild(actPanel);
 
@@ -1006,7 +1072,8 @@ function renderDetailPage(container, slugOrId) {
     dl.className = 'meta';
     dl.innerHTML = '<dt>Pengembang</dt><dd>' + escapeHtml(app.creatorDisplayName || '-') + '</dd>' +
       '<dt>Sekolah</dt><dd>' + escapeHtml(app.schoolDisplayName || 'Kecamatan Tirtomoyo') + '</dd>' +
-      '<dt>Dipublikasi</dt><dd>' + formatDateId(app.publishedAt) + '</dd>';
+      '<dt>Dipublikasi</dt><dd>' + formatDateId(app.publishedAt) + '</dd>' +
+      '<dt>Dimainkan</dt><dd><strong>' + (app.playCount || 0) + ' kali</strong></dd>';
 
     if (app.tags && app.tags.length > 0) {
       dl.innerHTML += '<dt>Kata Kunci</dt><dd>' + escapeHtml(app.tags.join(', ')) + '</dd>';
@@ -1179,6 +1246,12 @@ function createAppCard(app) {
     bStar.className = 'badge star';
     bStar.textContent = '★ Pilihan';
     badges.appendChild(bStar);
+  }
+  if (app.playCount !== undefined && app.playCount !== null) {
+    var bPlay = document.createElement('span');
+    bPlay.className = 'badge plays';
+    bPlay.textContent = '▶ ' + app.playCount + 'x';
+    badges.appendChild(bPlay);
   }
   body.appendChild(badges);
 
@@ -1785,23 +1858,206 @@ function renderSubmissionSuccess(res) {
   wrap.innerHTML = '<div class="panel success-box">' +
     '<div style="font-size:3rem;margin-bottom:.5rem;">🎉</div>' +
     '<h2>Pengajuan Berhasil & Langsung Tayang!</h2>' +
-    '<p class="muted">Aplikasi Anda telah berhasil dipublikasikan di katalog publik dan dapat segera digunakan oleh siswa maupun rekan guru. Nomor referensi karya:</p>' +
-    '<p><span class="code" style="font-size:1.15rem;padding:.4rem .9rem;font-weight:700;">' + escapeHtml(res.submissionId) + '</span></p>' +
+    '<p class="muted">Aplikasi Anda telah berhasil dipublikasikan di katalog publik. Catat nomor referensi Anda:</p>' +
+    '<p><span class="code" style="font-size:1.4rem;padding:.5rem 1.25rem;font-weight:800;color:var(--navy);letter-spacing:.05em;">' + escapeHtml(res.submissionId) + '</span></p>' +
     '<div class="alert alert-info" style="text-align:left;margin-top:1.5rem;">' +
-    '<strong>Status & Proses Kurasi:</strong>' +
+    '<strong>Informasi Kurasi & Status:</strong>' +
     '<ul style="margin:.4rem 0 0;padding-left:1.2rem;">' +
-    '<li>Karya Anda saat ini tayang di katalog publik (status awal menunggu kurasi).</li>' +
-    '<li>Tim admin akan meninjau fungsi tautan dan materi untuk menyematkan lencana <strong>✔ Terverifikasi</strong>.</li>' +
-    '<li>Bila ada hal yang perlu disesuaikan, admin akan menghubungi Anda melalui kontak yang dicantumkan.</li>' +
+    '<li>Karya Anda langsung aktif di katalog publik dan siap dimainkan siswa.</li>' +
+    '<li>Admin kurator akan meninjau kelayakan aplikasi untuk menyematkan lencana <strong>✔ Terverifikasi</strong>.</li>' +
+    '<li>Gunakan nomor referensi di atas pada menu <strong>Cek Status</strong> untuk memantau proses kurasi atau mengirimkan perbaikan mandiri.</li>' +
     '</ul>' +
     '</div>' +
-    '<div style="margin-top:1.5rem;display:flex;gap:.75rem;justify-content:center;">' +
-    '<a href="#/katalog" class="btn btn-primary">Lihat Aplikasi di Katalog</a>' +
-    '<a href="#/" class="btn btn-secondary">Kembali ke Beranda</a>' +
+    '<div style="margin-top:1.5rem;display:flex;gap:.75rem;justify-content:center;flex-wrap:wrap;">' +
+    '<a href="#/status" class="btn btn-primary">Pantau Status Pengajuan</a>' +
+    '<a href="#/katalog" class="btn btn-secondary">Lihat di Katalog</a>' +
     '</div>' +
     '</div>';
 
   window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+/* ---------- HELPER PLAY COUNTER & DEBOUNCE ---------- */
+var PLAY_DEBOUNCE_MAP = {};
+function trackPlay(appId, slug) {
+  var key = appId || slug;
+  if (!key || PLAY_DEBOUNCE_MAP[key]) return;
+  PLAY_DEBOUNCE_MAP[key] = true;
+  callApi('api_trackAppPlay', { appId: appId, slug: slug }).catch(function () {});
+  setTimeout(function () { delete PLAY_DEBOUNCE_MAP[key]; }, 60000);
+}
+
+/* ---------- HELPER BERBAGI UNIVERSAL (NATIVE SHARE API) ---------- */
+function triggerNativeShare(app) {
+  var shareUrl = window.location.origin + window.location.pathname + '#/detail/' + encodeURIComponent(app.slug || app.appId);
+  var shareData = {
+    title: app.title + ' — Tirtomoyo EduApps',
+    text: 'Ayo coba media pembelajaran "' + app.title + '" karya ' + (app.creatorDisplayName || 'Guru SD') + ' di Tirtomoyo EduApps:\n',
+    url: shareUrl
+  };
+
+  if (navigator.share) {
+    navigator.share(shareData).catch(function () {});
+  } else if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(shareData.text + shareData.url).then(function () {
+      showToast('Tautan dan deskripsi aplikasi berhasil disalin ke clipboard!', 'success');
+    }).catch(function () {
+      prompt('Salin tautan ini untuk dibagikan ke WhatsApp:', shareUrl);
+    });
+  } else {
+    prompt('Salin tautan ini untuk dibagikan ke WhatsApp:', shareUrl);
+  }
+}
+
+/* ---------- HELPER AUTO-SLIDER STATISTIK MOBILE ---------- */
+function initMobileStatsSlider() {
+  if (window.innerWidth > 768) return;
+  var track = document.getElementById('statsSliderTrack');
+  var dots = document.querySelectorAll('#statsDotsWrap .stats-dot');
+  if (!track || dots.length === 0) return;
+
+  var currentIdx = 0;
+  setInterval(function () {
+    currentIdx = (currentIdx + 1) % 3;
+    track.style.transform = 'translateX(-' + (currentIdx * 100) + '%)';
+    dots.forEach(function (dot, i) {
+      if (i === currentIdx) dot.classList.add('active');
+      else dot.classList.remove('active');
+    });
+  }, 3200);
+}
+
+/* ---------- HALAMAN CEK STATUS & FORM REVISI MANDIRI GURU ---------- */
+function renderStatusPage(container) {
+  var root = document.createElement('div');
+  root.className = 'container form-wrap';
+
+  root.innerHTML = '<div style="margin-bottom:1.5rem;">' +
+    '<h1>Cek Status & Revisi Pengajuan</h1>' +
+    '<p class="muted">Masukkan Nomor Referensi (contoh: <code>TMY-2841</code>) dan Kontak WhatsApp/Email yang Anda daftarkan saat mengajukan karya.</p>' +
+    '</div>' +
+    '<div class="panel" style="margin-bottom:1.5rem;">' +
+    '<form id="formCheckStatus">' +
+    '<div class="field">' +
+    '<label class="label" for="in_refNum">Nomor Referensi Pengajuan <span class="req">*</span></label>' +
+    '<input type="text" id="in_refNum" placeholder="TMY-XXXX" style="font-weight:700;letter-spacing:.05em;" required>' +
+    '</div>' +
+    '<div class="field">' +
+    '<label class="label" for="in_refContact">Kontak WhatsApp / Email Terdaftar <span class="req">*</span></label>' +
+    '<input type="text" id="in_refContact" placeholder="Nomor WA atau alamat email Anda..." required>' +
+    '</div>' +
+    '<button type="submit" class="btn btn-primary" id="btnCheckStatus">🔍 Cek Status Pengajuan</button>' +
+    '</form>' +
+    '</div>' +
+    '<div id="statusResultWrap"></div>';
+
+  var form = root.querySelector('#formCheckStatus');
+  form.onsubmit = function (e) {
+    e.preventDefault();
+    var btn = root.querySelector('#btnCheckStatus');
+    var resultWrap = root.querySelector('#statusResultWrap');
+    var ref = root.querySelector('#in_refNum').value.trim();
+    var contact = root.querySelector('#in_refContact').value.trim();
+
+    btn.disabled = true;
+    btn.textContent = 'Memeriksa ke server...';
+    resultWrap.innerHTML = '<div class="spinner"></div>';
+
+    callApi('api_checkSubmissionStatus', { referenceNumber: ref, contact: contact }).then(function (data) {
+      btn.disabled = false;
+      btn.textContent = '🔍 Cek Status Pengajuan';
+      renderStatusResult(resultWrap, data, contact);
+    }).catch(function (err) {
+      btn.disabled = false;
+      btn.textContent = '🔍 Cek Status Pengajuan';
+      resultWrap.innerHTML = '<div class="alert alert-error"><strong>Gagal Memeriksa Status:</strong><br>' + escapeHtml(err.message) + '</div>';
+    });
+  };
+
+  container.innerHTML = '';
+  container.appendChild(root);
+}
+
+function renderStatusResult(wrapper, s, contact) {
+  var statusBadge = '';
+  if (s.status === 'PENDING') statusBadge = '<span class="status-badge-lg st-PENDING">⏳ Menunggu Pemeriksaan</span>';
+  else if (s.status === 'IN_REVIEW') statusBadge = '<span class="status-badge-lg st-IN_REVIEW">🔍 Sedang Ditinjau Kurator</span>';
+  else if (s.status === 'NEEDS_REVISION') statusBadge = '<span class="status-badge-lg st-NEEDS_REVISION">✏️ Perlu Revisi</span>';
+  else if (s.status === 'APPROVED') statusBadge = '<span class="status-badge-lg st-APPROVED">✔ Terverifikasi & Terbit</span>';
+  else if (s.status === 'REJECTED') statusBadge = '<span class="status-badge-lg st-REJECTED">✕ Ditolak</span>';
+
+  var html = '<div class="panel">' +
+    '<div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:.5rem;margin-bottom:1rem;">' +
+    '<div><h2 style="margin:0 0 .25rem;">' + escapeHtml(s.title) + '</h2><span class="code" style="font-weight:700;">' + escapeHtml(s.submissionId) + '</span></div>' +
+    statusBadge +
+    '</div>' +
+    '<dl class="meta">' +
+    '<dt>Pengembang</dt><dd>' + escapeHtml(s.creatorName) + '</dd>' +
+    '<dt>Sekolah</dt><dd>' + escapeHtml(s.schoolName) + '</dd>' +
+    '<dt>Tautan Aplikasi</dt><dd><a href="' + escapeHtml(s.targetUrl) + '" target="_blank" rel="noopener noreferrer">' + escapeHtml(s.targetUrl) + ' ↗</a></dd>' +
+    '<dt>Tgl Pengajuan</dt><dd>' + formatDateId(s.submittedAt) + '</dd>' +
+    '</dl>';
+
+  if (s.canRevise && s.reviewNotes) {
+    html += '<div class="revision-box" style="margin-top:1.25rem;">' +
+      '<h4>Catatan Instruksi Perbaikan dari Kurator:</h4>' +
+      '<div class="note-text">' + escapeHtml(s.reviewNotes) + '</div>' +
+      '</div>';
+  }
+
+  html += '</div>';
+
+  if (s.canRevise) {
+    html += '<div class="form-card" style="margin-top:1.5rem;">' +
+      '<div class="form-card-header">' +
+      '<h2>Formulir Perbaikan Mandiri</h2>' +
+      '<p>Perbaiki kolom yang diminta kurator, lalu klik "Kirim Ulang Revisi" di bawah.</p>' +
+      '</div>' +
+      '<form id="formTeacherRevision" style="padding:1.5rem;">' +
+      '<div class="field"><label class="label">Nama Aplikasi <span class="req">*</span></label><input type="text" id="rev_title" value="' + escapeHtml(s.title) + '" required></div>' +
+      '<div class="field"><label class="label">Ringkasan Singkat <span class="req">*</span></label><input type="text" id="rev_short" value="' + escapeHtml(s.shortDescription) + '" required></div>' +
+      '<div class="field"><label class="label">Deskripsi Lengkap <span class="req">*</span></label><textarea id="rev_desc" required>' + escapeHtml(s.description) + '</textarea></div>' +
+      '<div class="field"><label class="label">Tujuan Pembelajaran</label><textarea id="rev_obj">' + escapeHtml(s.learningObjective || '') + '</textarea></div>' +
+      '<div class="field"><label class="label">URL Aplikasi (Wajib HTTPS) <span class="req">*</span></label><input type="url" id="rev_url" value="' + escapeHtml(s.targetUrl) + '" required></div>' +
+      '<div class="field"><label class="label">URL Gambar Sampul / Screenshot</label><input type="url" id="rev_thumb" value="' + escapeHtml(s.thumbnailUrl || '') + '"></div>' +
+      '<div class="field"><label class="label">Kata Kunci (Tags)</label><input type="text" id="rev_tags" value="' + escapeHtml((s.tags || []).join(', ')) + '"></div>' +
+      '<button type="submit" class="btn btn-primary" id="btnSubmitRevision" style="margin-top:1rem;width:100%;">Kirim Ulang Revisi 🚀</button>' +
+      '</form>' +
+      '</div>';
+  }
+
+  wrapper.innerHTML = html;
+
+  var revForm = wrapper.querySelector('#formTeacherRevision');
+  if (revForm) {
+    revForm.onsubmit = function (e) {
+      e.preventDefault();
+      var btnRev = revForm.querySelector('#btnSubmitRevision');
+      btnRev.disabled = true;
+      btnRev.textContent = 'Mengirim revisi ke server...';
+
+      var payload = {
+        submissionId: s.submissionId,
+        contact: contact,
+        title: revForm.querySelector('#rev_title').value.trim(),
+        shortDescription: revForm.querySelector('#rev_short').value.trim(),
+        description: revForm.querySelector('#rev_desc').value.trim(),
+        learningObjective: revForm.querySelector('#rev_obj').value.trim(),
+        targetUrl: revForm.querySelector('#rev_url').value.trim(),
+        thumbnailUrl: revForm.querySelector('#rev_thumb').value.trim(),
+        tags: revForm.querySelector('#rev_tags').value.trim()
+      };
+
+      callApi('api_resubmitRevision', payload).then(function (res) {
+        showToast(res.message, 'success');
+        renderStatusPage(document.getElementById('publicContent'));
+      }).catch(function (err) {
+        btnRev.disabled = false;
+        btnRev.textContent = 'Kirim Ulang Revisi 🚀';
+        showToast(err.message || 'Gagal mengirim revisi.', 'error');
+      });
+    };
+  }
 }
 
 document.addEventListener('DOMContentLoaded', function () {
@@ -1810,6 +2066,18 @@ document.addEventListener('DOMContentLoaded', function () {
   if (toggle && nav) {
     toggle.addEventListener('click', function () { nav.classList.toggle('open'); });
   }
+
+  document.addEventListener('click', function (e) {
+    var target = e.target.closest('a');
+    if (target) {
+      var href = target.getAttribute('href');
+      if (href && href.indexOf('#') === 0) {
+        e.preventDefault();
+        navigateTo(href);
+      }
+    }
+  });
+
   initPublicApp();
 });
   </script>
