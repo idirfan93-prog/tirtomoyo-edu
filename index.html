@@ -549,7 +549,6 @@ function renderHomePage(container) {
       dailyHead.className = 'section-head';
       dailyHead.innerHTML = '<div>' +
         '<h2 style="display:flex;align-items:center;gap:.5rem;margin:0;"><span>✨</span> Rekomendasi Pilihan Hari Ini</h2>' +
-        '<p class="muted small" style="margin:0;">5 rekomendasi acak yang berganti otomatis setiap hari.</p>' +
         '</div>' +
         '<a href="#/katalog" class="small">Jelajahi Semua →</a>';
       dailySec.appendChild(dailyHead);
@@ -570,8 +569,9 @@ function renderHomePage(container) {
         var body = '<div class="d-body">' +
           '<h4>' + escapeHtml(app.title) + '</h4>' +
           '<div class="d-meta">👨‍🏫 ' + escapeHtml(app.creatorDisplayName || 'Guru SD') + '</div>' +
-          '<div class="d-meta" style="color:var(--success);font-weight:600;">▶ ' + (app.playCount || 0) + 'x dimainkan</div>' +
-          '<a href="#/detail/' + encodeURIComponent(app.slug || app.appId) + '" class="btn btn-secondary btn-sm" style="margin-top:auto;width:100%;font-size:.82rem;padding:.3rem;">Buka Detail</a>' +
+          '<div class="d-meta">🏫 ' + escapeHtml(app.schoolDisplayName || 'Kecamatan Tirtomoyo') + '</div>' +
+          '<div class="d-meta" style="color:var(--success);font-weight:600;margin-top:.2rem;">▶ ' + (app.playCount || 0) + 'x dimainkan</div>' +
+          '<a href="#/detail/' + encodeURIComponent(app.slug || app.appId) + '" class="btn btn-secondary btn-sm" style="margin-top:auto;width:100%;font-size:.82rem;padding:.35rem;">Buka Detail</a>' +
           '</div>';
 
         dCard.innerHTML = thumb + body;
@@ -1909,7 +1909,7 @@ function triggerNativeShare(app) {
   }
 }
 
-/* ---------- HELPER AUTO-SLIDER STATISTIK MOBILE ---------- */
+/* ---------- HELPER SLIDER STATISTIK MOBILE (TOUCH & AUTO-SLIDE) ---------- */
 function initMobileStatsSlider() {
   if (window.innerWidth > 768) return;
   var track = document.getElementById('statsSliderTrack');
@@ -1917,14 +1917,51 @@ function initMobileStatsSlider() {
   if (!track || dots.length === 0) return;
 
   var currentIdx = 0;
-  setInterval(function () {
-    currentIdx = (currentIdx + 1) % 3;
-    track.style.transform = 'translateX(-' + (currentIdx * 100) + '%)';
+  var totalItems = 3;
+  var isUserInteracting = false;
+  var interactionTimeout = null;
+
+  function updateDots(idx) {
+    currentIdx = idx;
     dots.forEach(function (dot, i) {
-      if (i === currentIdx) dot.classList.add('active');
+      if (i === idx) dot.classList.add('active');
       else dot.classList.remove('active');
     });
-  }, 3200);
+  }
+
+  track.addEventListener('scroll', function () {
+    var scrollLeft = track.scrollLeft;
+    var width = track.clientWidth || 1;
+    var activeIdx = Math.round(scrollLeft / width);
+    if (activeIdx >= 0 && activeIdx < totalItems) {
+      updateDots(activeIdx);
+    }
+  }, { passive: true });
+
+  function pauseInteraction() {
+    isUserInteracting = true;
+    if (interactionTimeout) clearTimeout(interactionTimeout);
+    interactionTimeout = setTimeout(function () {
+      isUserInteracting = false;
+    }, 6000);
+  }
+
+  track.addEventListener('touchstart', pauseInteraction, { passive: true });
+  track.addEventListener('touchmove', pauseInteraction, { passive: true });
+
+  dots.forEach(function (dot, idx) {
+    dot.onclick = function () {
+      pauseInteraction();
+      track.scrollTo({ left: idx * track.clientWidth, behavior: 'smooth' });
+      updateDots(idx);
+    };
+  });
+
+  setInterval(function () {
+    if (isUserInteracting) return;
+    var nextIdx = (currentIdx + 1) % totalItems;
+    track.scrollTo({ left: nextIdx * track.clientWidth, behavior: 'smooth' });
+  }, 3500);
 }
 
 /* ---------- HALAMAN CEK STATUS & FORM REVISI MANDIRI GURU ---------- */
