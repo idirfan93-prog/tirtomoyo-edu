@@ -137,6 +137,49 @@ function showToast(message, type) {
   }, 4000);
 }
 
+function showConfirmModal(title, text, confirmBtnText, isDanger) {
+  return new Promise(function (resolve) {
+    var backdrop = document.createElement('div');
+    backdrop.className = 'modal-backdrop';
+
+    var modal = document.createElement('div');
+    modal.className = 'modal';
+
+    var h = document.createElement('h3');
+    h.textContent = title;
+    var p = document.createElement('p');
+    p.textContent = text;
+    p.className = 'muted small';
+
+    var actions = document.createElement('div');
+    actions.className = 'actions';
+
+    var btnCancel = document.createElement('button');
+    btnCancel.className = 'btn btn-secondary btn-sm';
+    btnCancel.textContent = 'Batal';
+    btnCancel.onclick = function () {
+      backdrop.remove();
+      resolve(false);
+    };
+
+    var btnConfirm = document.createElement('button');
+    btnConfirm.className = 'btn btn-sm ' + (isDanger ? 'btn-danger' : 'btn-primary');
+    btnConfirm.textContent = confirmBtnText || 'Lanjutkan';
+    btnConfirm.onclick = function () {
+      backdrop.remove();
+      resolve(true);
+    };
+
+    actions.appendChild(btnCancel);
+    actions.appendChild(btnConfirm);
+    modal.appendChild(h);
+    modal.appendChild(p);
+    modal.appendChild(actions);
+    backdrop.appendChild(modal);
+    document.body.appendChild(backdrop);
+  });
+}
+
 function createFormField(name, labelText, type, placeholder, required, helpText) {
   var div = document.createElement('div');
   div.className = 'field';
@@ -2410,8 +2453,9 @@ function renderTeacherDashboard(container) {
     '<span>📱 ' + escapeHtml(u.contact || u.email) + '</span>' +
     '</div>' +
     '</div>' +
-    '<div style="display:flex;gap:.5rem;">' +
+    '<div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center;">' +
     '<a href="#/ajukan" class="btn btn-sm" style="background:#fff;color:var(--navy);font-weight:700;text-decoration:none;">+ Ajukan Karya Baru</a>' +
+    '<button type="button" class="btn btn-sm" id="btnOpenChangePass" style="background:rgba(255,255,255,.18);color:#fff;border:1px solid rgba(255,255,255,.35);border-radius:var(--radius-ctl);font-weight:600;cursor:pointer;">🔐 Ganti Password</button>' +
     '<button type="button" class="btn btn-sm btn-secondary" id="btnTeacherLogout" style="background:rgba(255,255,255,.15);color:#fff;border-color:rgba(255,255,255,.3);">Keluar</button>' +
     '</div>' +
     '</div>' +
@@ -2420,29 +2464,34 @@ function renderTeacherDashboard(container) {
     '<div class="teacher-stat-card"><div class="icon" style="background:#ECFDF3;color:var(--success);">✔</div><div><div class="num" id="tStatVerified">-</div><div class="lbl">Terverifikasi Kurator</div></div></div>' +
     '<div class="teacher-stat-card"><div class="icon" style="background:#FFFAEB;color:#B54708;">▶</div><div><div class="num" id="tStatPlays">-</div><div class="lbl">Total Dimainkan</div></div></div>' +
     '</div>' +
-    '<div id="changePassSlot"></div>' +
     '<div style="margin-top:2rem;">' +
     '<h2 style="font-size:1.25rem;margin-bottom:1rem;">Daftar Aplikasi Pembelajaran Saya</h2>' +
     '<div id="teacherAppListWrap"><div class="spinner"></div></div>' +
     '</div>' +
     '</div>';
 
-  container.querySelector('#btnTeacherLogout').onclick = function () {
-    showConfirmModal('Konfirmasi Keluar', 'Yakin ingin keluar dari akun guru?', 'Keluar').then(function (ok) {
-      if (ok) {
-        localStorage.removeItem('eduapps_user_session');
-        showToast('Anda telah keluar dari akun.', 'info');
-        syncNavAuthButton();
-        navigateTo('#/');
-      }
-    });
+  container.querySelector('#btnOpenChangePass').onclick = function () {
+    openChangePasswordModal(u);
   };
 
-  var passSlot = container.querySelector('#changePassSlot');
-  passSlot.appendChild(createChangePasswordCard(u));
+  container.querySelector('#btnTeacherLogout').onclick = function () {
+    var doLogout = function () {
+      localStorage.removeItem('eduapps_user_session');
+      showToast('Anda telah keluar dari akun.', 'info');
+      syncNavAuthButton();
+      navigateTo('#/');
+    };
+
+    if (typeof showConfirmModal === 'function') {
+      showConfirmModal('Konfirmasi Keluar', 'Yakin ingin keluar dari akun guru?', 'Keluar').then(function (ok) {
+        if (ok) doLogout();
+      });
+    } else if (confirm('Yakin ingin keluar dari akun guru?')) {
+      doLogout();
+    }
+  };
 
   refreshTeacherDashboardApps(container, u);
-}
 
 function refreshTeacherDashboardApps(container, u) {
   var listWrap = container.querySelector('#teacherAppListWrap');
@@ -2515,48 +2564,55 @@ function refreshTeacherDashboardApps(container, u) {
   });
 }
 
-function createChangePasswordCard(userProfile) {
-  var card = document.createElement('div');
-  card.className = 'panel profile-security-card';
+function openChangePasswordModal(userProfile) {
+  var backdrop = document.createElement('div');
+  backdrop.className = 'modal-backdrop';
 
-  card.innerHTML = '<div style="display:flex;align-items:center;gap:.6rem;margin-bottom:1rem;border-bottom:1px solid var(--border);padding-bottom:.75rem;">' +
-    '<span style="font-size:1.3rem;">🔐</span>' +
-    '<div>' +
-    '<h3 style="margin:0;font-size:1.05rem;">Keamanan & Kata Sandi</h3>' +
-    '<p class="small muted" style="margin:0;">' +
-    (userProfile.hasCustomPassword ? 'Ubah kata sandi akun Anda secara berkala.' : 'Akun Anda masih menggunakan password awal (NPSN Sekolah). Buat kata sandi privat agar lebih aman.') +
+  var modal = document.createElement('div');
+  modal.className = 'modal auth-modal';
+
+  modal.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--border);padding-bottom:.75rem;margin-bottom:1rem;">' +
+    '<h3 style="margin:0;font-size:1.15rem;">🔐 Ganti Kata Sandi</h3>' +
+    '<button type="button" class="btn btn-secondary btn-sm" id="btnClosePassModal">✕</button>' +
+    '</div>' +
+    '<p class="small muted" style="margin-top:0;margin-bottom:1rem;">' +
+    (userProfile.hasCustomPassword ? 'Ubah kata sandi akun Anda secara berkala.' : 'Akun Anda saat ini menggunakan password awal (NPSN: ' + escapeHtml(userProfile.schoolNpsn || '-') + '). Buat kata sandi privat baru agar akun lebih aman.') +
     '</p>' +
-    '</div>' +
-    '</div>' +
-    '<form id="formChangePassword">' +
+    '<form id="formChangePasswordModal">' +
     '<div class="field">' +
-    '<label class="label" for="in_currPass">Kata Sandi Saat Ini <span class="req">*</span></label>' +
-    '<input type="password" id="in_currPass" placeholder="' + (userProfile.hasCustomPassword ? 'Masukkan kata sandi lama' : 'Masukkan NPSN Sekolah (' + (userProfile.schoolNpsn || '') + ')') + '" required autocomplete="current-password">' +
-    '</div>' +
-    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;">' +
-    '<div class="field">' +
-    '<label class="label" for="in_newPass">Kata Sandi Baru <span class="req">*</span></label>' +
-    '<input type="password" id="in_newPass" placeholder="Minimal 6 karakter" required minlength="6" autocomplete="new-password">' +
+    '<label class="label" for="in_modalCurrPass">Kata Sandi Saat Ini <span class="req">*</span></label>' +
+    '<input type="password" id="in_modalCurrPass" placeholder="' + (userProfile.hasCustomPassword ? 'Masukkan kata sandi lama' : 'Masukkan NPSN Sekolah (' + escapeHtml(userProfile.schoolNpsn || '') + ')') + '" required autocomplete="current-password">' +
     '</div>' +
     '<div class="field">' +
-    '<label class="label" for="in_confPass">Konfirmasi Kata Sandi Baru <span class="req">*</span></label>' +
-    '<input type="password" id="in_confPass" placeholder="Ulangi kata sandi baru" required minlength="6" autocomplete="new-password">' +
+    '<label class="label" for="in_modalNewPass">Kata Sandi Baru <span class="req">*</span></label>' +
+    '<input type="password" id="in_modalNewPass" placeholder="Minimal 6 karakter" required minlength="6" autocomplete="new-password">' +
     '</div>' +
+    '<div class="field">' +
+    '<label class="label" for="in_modalConfPass">Konfirmasi Kata Sandi Baru <span class="req">*</span></label>' +
+    '<input type="password" id="in_modalConfPass" placeholder="Ulangi kata sandi baru" required minlength="6" autocomplete="new-password">' +
     '</div>' +
-    '<div id="changePassError" class="field-error" style="display:none;margin-bottom:.75rem;"></div>' +
-    '<div style="display:flex;justify-content:flex-end;">' +
-    '<button type="submit" class="btn btn-primary btn-sm" id="btnSavePassword">Simpan Kata Sandi Baru</button>' +
+    '<div id="modalPassError" class="field-error" style="display:none;margin-bottom:.75rem;"></div>' +
+    '<div style="display:flex;justify-content:flex-end;gap:.5rem;margin-top:1.25rem;">' +
+    '<button type="button" class="btn btn-secondary btn-sm" id="btnCancelPassModal">Batal</button>' +
+    '<button type="submit" class="btn btn-primary btn-sm" id="btnSaveModalPass">Simpan Kata Sandi</button>' +
     '</div>' +
     '</form>';
 
-  var form = card.querySelector('#formChangePassword');
+  backdrop.appendChild(modal);
+  document.body.appendChild(backdrop);
+
+  var close = function () { backdrop.remove(); };
+  modal.querySelector('#btnClosePassModal').onclick = close;
+  modal.querySelector('#btnCancelPassModal').onclick = close;
+
+  var form = modal.querySelector('#formChangePasswordModal');
   form.onsubmit = function (e) {
     e.preventDefault();
-    var errBox = card.querySelector('#changePassError');
-    var btn = card.querySelector('#btnSavePassword');
-    var currPass = card.querySelector('#in_currPass').value.trim();
-    var newPass = card.querySelector('#in_newPass').value.trim();
-    var confPass = card.querySelector('#in_confPass').value.trim();
+    var errBox = modal.querySelector('#modalPassError');
+    var btn = modal.querySelector('#btnSaveModalPass');
+    var currPass = modal.querySelector('#in_modalCurrPass').value.trim();
+    var newPass = modal.querySelector('#in_modalNewPass').value.trim();
+    var confPass = modal.querySelector('#in_modalConfPass').value.trim();
 
     errBox.style.display = 'none';
 
@@ -2584,9 +2640,6 @@ function createChangePasswordCard(userProfile) {
       currentPassword: currPass,
       newPassword: newPass
     }).then(function (res) {
-      btn.disabled = false;
-      btn.textContent = 'Simpan Kata Sandi Baru';
-      form.reset();
       userProfile.hasCustomPassword = true;
       var sess = getTeacherSession_();
       if (sess && sess.user) {
@@ -2594,15 +2647,14 @@ function createChangePasswordCard(userProfile) {
         localStorage.setItem('eduapps_user_session', JSON.stringify(sess));
       }
       showToast(res.message || 'Kata sandi berhasil diubah!', 'success');
+      backdrop.remove();
     }).catch(function (err) {
       btn.disabled = false;
-      btn.textContent = 'Simpan Kata Sandi Baru';
+      btn.textContent = 'Simpan Kata Sandi';
       errBox.textContent = err.message || 'Gagal mengubah kata sandi.';
       errBox.style.display = 'block';
     });
   };
-
-  return card;
 }
 
 function openTeacherEditAppModal(app, u) {
