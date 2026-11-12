@@ -383,6 +383,7 @@ var PUBLIC_STATE = {
   config: null,
   categories: null,
   homeData: null,
+  currentApp: null,
   catalogPage: 1,
   catalogPageSize: 12,
   catalogFilters: {
@@ -435,14 +436,18 @@ function loadPublicInitialData() {
   });
 }
 
+var ACTIVE_ROUTE_SEQ = 0;
+
 function navigateTo(hash) {
   if (window.location.hash !== hash) {
     window.location.hash = hash;
+  } else {
+    handlePublicRoute();
   }
-  handlePublicRoute();
 }
 
 function handlePublicRoute() {
+  ACTIVE_ROUTE_SEQ++;
   var hash = window.location.hash || '#/';
   var content = document.getElementById('publicContent');
   if (!content) return;
@@ -1047,7 +1052,10 @@ function executeCatalogSearch() {
 function renderDetailPage(container, slugOrId) {
   container.innerHTML = '<div class="container" style="padding:2rem 1rem;"><div class="spinner"></div><p style="text-align:center;">Memuat detail aplikasi...</p></div>';
 
+  var routeSeq = ACTIVE_ROUTE_SEQ;
   callApi('api_getPublicAppDetail', { slug: slugOrId, appId: slugOrId }).then(function (app) {
+    if (routeSeq !== ACTIVE_ROUTE_SEQ) return;
+    PUBLIC_STATE.currentApp = app;
     container.innerHTML = '';
     var root = document.createElement('div');
     root.className = 'container';
@@ -1231,9 +1239,14 @@ function renderDetailPage(container, slugOrId) {
 /* ---------- 3B. HALAMAN PEMUTAR APLIKASI (IN-APP EMBED PLAYER) ---------- */
 
 function renderPlayPage(container, slugOrId) {
-  container.innerHTML = '<div class="container" style="padding:3rem 1rem;text-align:center;"><div class="spinner"></div><p class="muted">Menyiapkan ruang aplikasi pembelajaran...</p></div>';
+  var routeSeq = ACTIVE_ROUTE_SEQ;
+  var decodedId = decodeURIComponent(slugOrId || '');
+  var cached = PUBLIC_STATE.currentApp;
+  var isMatch = cached && (cached.slug === decodedId || cached.appId === decodedId || cached.slug === slugOrId || cached.appId === slugOrId);
 
-  callApi('api_getPublicAppDetail', { slug: slugOrId, appId: slugOrId }).then(function (app) {
+  function mountPlayer(app) {
+    if (routeSeq !== ACTIVE_ROUTE_SEQ) return;
+    PUBLIC_STATE.currentApp = app;
     container.innerHTML = '';
 
     var topBar = document.createElement('div');
@@ -1281,13 +1294,27 @@ function renderPlayPage(container, slugOrId) {
 
     var frameWrap = document.createElement('div');
     frameWrap.id = 'playerFrameWrap';
-    frameWrap.style.cssText = 'width:100%;height:calc(100dvh - 46px);flex:1;background:#000;position:relative;overflow:hidden;';
+    frameWrap.style.cssText = 'width:100%;height:calc(100dvh - 46px);flex:1;background:#0F172A;position:relative;overflow:hidden;';
+
+    var frameLoader = document.createElement('div');
+    frameLoader.style.cssText = 'position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#0F172A;color:#E2E8F0;z-index:2;transition:opacity .25s ease;pointer-events:none;';
+    frameLoader.innerHTML = '<div class="spinner" style="border-color:rgba(255,255,255,.2);border-top-color:#60A5FA;"></div><p style="margin:0;font-size:.9rem;">Memuat permainan...</p>';
+
+    var hideLoader = function () {
+      if (!frameLoader.parentNode) return;
+      frameLoader.style.opacity = '0';
+      setTimeout(function () {
+        if (frameLoader.parentNode) frameLoader.remove();
+      }, 260);
+    };
 
     var iframe = document.createElement('iframe');
     iframe.src = app.targetUrl;
     iframe.title = app.title;
-    iframe.allow = 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen';
+    iframe.allow = 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; camera; microphone; fullscreen';
     iframe.style.cssText = 'width:100%;height:100%;border:none;display:block;';
+    iframe.onload = hideLoader;
+    setTimeout(hideLoader, 4500);
 
     btnFull.onclick = function () {
       if (!document.fullscreenElement) {
@@ -1298,9 +1325,22 @@ function renderPlayPage(container, slugOrId) {
       }
     };
 
+    frameWrap.appendChild(frameLoader);
     frameWrap.appendChild(iframe);
     container.appendChild(frameWrap);
+  }
+
+  if (isMatch) {
+    mountPlayer(cached);
+    return;
+  }
+
+  container.innerHTML = '<div class="container" style="padding:3rem 1rem;text-align:center;"><div class="spinner"></div><p class="muted">Menyiapkan ruang aplikasi pembelajaran...</p></div>';
+
+  callApi('api_getPublicAppDetail', { slug: decodedId, appId: decodedId }).then(function (app) {
+    mountPlayer(app);
   }).catch(function (err) {
+    if (routeSeq !== ACTIVE_ROUTE_SEQ) return;
     container.innerHTML = '<div class="container" style="padding:2.5rem 1rem;"><div class="state error"><h3>Gagal Memuat Player</h3><p>' + escapeHtml(err.message) + '</p><a href="#/katalog" class="btn btn-primary btn-sm">Kembali ke Katalog</a></div></div>';
   });
 }
@@ -1637,12 +1677,21 @@ function renderSubmissionPage(container) {
   var sessionData = getTeacherSession_();
   if (sessionData && sessionData.user) {
     var u = sessionData.user;
+    var resolvedSchoolId = u.schoolId || '';
+    if (!resolvedSchoolId && (u.schoolName || u.schoolNpsn) && schoolsList.length > 0) {
+      var foundSch = schoolsList.find(function (s) {
+        return (u.schoolNpsn && s.npsn && String(s.npsn).trim() === String(u.schoolNpsn).trim()) ||
+          (u.schoolName && s.name && s.name.trim().toLowerCase() === String(u.schoolName).trim().toLowerCase());
+      });
+      if (foundSch) resolvedSchoolId = foundSch.id;
+    }
+
     var inT = fTeacher.querySelector('#in_creatorName');
     if (inT) inT.value = u.name;
     var inC = fContact.querySelector('#in_contact');
     if (inC) inC.value = u.contact || u.email;
     var inSId = fSchool.querySelector('#in_schoolId');
-    if (inSId) inSId.value = u.schoolId || '';
+    if (inSId) inSId.value = resolvedSchoolId;
     var inSName = fSchool.querySelector('#in_schoolName');
     if (inSName) inSName.value = u.schoolName || '';
     var inSNpsn = fSchool.querySelector('#in_schoolNpsn');
@@ -1829,10 +1878,23 @@ function validateCurrentStep(step, form) {
   } else if (step === 3) {
     var creatorName = (form.querySelector('[name="creatorName"]').value || '').trim();
     var schoolId = (form.querySelector('[name="schoolId"]').value || '').trim();
+    var schoolName = (form.querySelector('[name="schoolName"]').value || '').trim();
+    var schoolNpsn = (form.querySelector('[name="schoolNpsn"]').value || '').trim();
     var contact = (form.querySelector('[name="contact"]').value || '').trim();
 
+    if (!schoolId && (schoolName || schoolNpsn) && PUBLIC_STATE.categories && PUBLIC_STATE.categories.schools) {
+      var matchedSch = PUBLIC_STATE.categories.schools.find(function (s) {
+        return (schoolNpsn && s.npsn && String(s.npsn).trim() === schoolNpsn) ||
+          (schoolName && s.name && s.name.trim().toLowerCase() === schoolName.toLowerCase());
+      });
+      if (matchedSch) {
+        schoolId = matchedSch.id;
+        form.querySelector('[name="schoolId"]').value = schoolId;
+      }
+    }
+
     if (!creatorName) errors.creatorName = 'Nama lengkap guru pengembang wajib diisi.';
-    if (!schoolId) errors.schoolSelect = 'Pilih sekolah asal Anda dari daftar pilihan.';
+    if (!schoolId && (!schoolName || !schoolNpsn)) errors.schoolSelect = 'Pilih sekolah asal Anda dari daftar pilihan.';
     if (!contact) errors.contact = 'Kontak WhatsApp / Email wajib diisi untuk kurasi admin.';
   } else if (step === 4) {
     var rights = form.querySelector('[name="rightsDeclaration"]').checked;
@@ -1961,12 +2023,21 @@ function createSearchableTeacherField(name, labelText, teachersList, schoolsList
 
         // Isi otomatis sekolah asal
         if (t.schoolId || t.schoolName) {
+          var matchedId = t.schoolId || '';
+          if (!matchedId && (schoolsList || []).length > 0) {
+            var foundSch = schoolsList.find(function (s) {
+              return (t.schoolNpsn && s.npsn && String(s.npsn).trim() === String(t.schoolNpsn).trim()) ||
+                (t.schoolName && s.name && s.name.trim().toLowerCase() === String(t.schoolName).trim().toLowerCase());
+            });
+            if (foundSch) matchedId = foundSch.id;
+          }
+
           var inSchoolId = document.getElementById('in_schoolId');
           var inSchoolName = document.getElementById('in_schoolName');
           var inSchoolNpsn = document.getElementById('in_schoolNpsn');
           var trigger = document.getElementById('schoolSelectTrigger');
 
-          if (inSchoolId) inSchoolId.value = t.schoolId || '';
+          if (inSchoolId) inSchoolId.value = matchedId;
           if (inSchoolName) inSchoolName.value = t.schoolName || '';
           if (inSchoolNpsn) inSchoolNpsn.value = t.schoolNpsn || '';
 
@@ -2157,6 +2228,30 @@ function handleFormSubmit(form, btnSubmit) {
   btnSubmit.textContent = '⏳ Mengirim pengajuan ke server...';
 
   callApi('api_submitApplication', payload).then(function (res) {
+    if (res && res.teacher) {
+      var sess = getTeacherSession_();
+      if (sess && sess.user && (sess.user.id === res.teacher.id || sess.user.email === res.teacher.email || sess.user.contact === res.teacher.contact)) {
+        sess.user.name = res.teacher.name;
+        sess.user.contact = res.teacher.contact;
+        if (res.teacher.email) sess.user.email = res.teacher.email;
+        if (res.teacher.schoolId) sess.user.schoolId = res.teacher.schoolId;
+        if (res.teacher.schoolName) sess.user.schoolName = res.teacher.schoolName;
+        if (res.teacher.schoolNpsn) sess.user.schoolNpsn = res.teacher.schoolNpsn;
+        try {
+          localStorage.setItem('eduapps_user_session', JSON.stringify(sess));
+        } catch (e) {}
+        syncNavAuthButton();
+      }
+    }
+
+    PUBLIC_STATE.categories = null;
+    PUBLIC_STATE.homeData = null;
+    try {
+      localStorage.removeItem('eduapps_pub_cats');
+      localStorage.removeItem('eduapps_pub_homedata');
+    } catch (e) {}
+    loadPublicInitialData();
+
     renderSubmissionSuccess(res);
   }).catch(function (err) {
     btnSubmit.disabled = false;
@@ -2249,7 +2344,17 @@ function triggerNativeShare(app) {
 
 /* ---------- HELPER SLIDER STATISTIK MOBILE (TOUCH & AUTO-SLIDE) ---------- */
 function initMobileStatsSlider() {
-  if (window.innerWidth > 768) return;
+  if (!window._statsResizeBound) {
+    window._statsResizeBound = true;
+    var resizeDebounce = null;
+    window.addEventListener('resize', function () {
+      if (resizeDebounce) clearTimeout(resizeDebounce);
+      resizeDebounce = setTimeout(function () {
+        initMobileStatsSlider();
+      }, 250);
+    });
+  }
+
   var track = document.getElementById('statsSliderTrack');
   var dots = document.querySelectorAll('#statsDotsWrap .stats-dot');
   if (!track || dots.length === 0) return;
@@ -2257,6 +2362,11 @@ function initMobileStatsSlider() {
   if (window._statsSliderInterval) {
     clearInterval(window._statsSliderInterval);
     window._statsSliderInterval = null;
+  }
+
+  if (window.innerWidth > 768) {
+    track.scrollLeft = 0;
+    return;
   }
 
   var currentIdx = 0;
@@ -2980,6 +3090,14 @@ function openTeacherEditAppModal(app, u) {
       showToast(res.message || 'Aplikasi berhasil diperbarui!', 'success');
       backdrop.remove();
 
+      var cats = PUBLIC_STATE.categories || {};
+      var gradeMap = {};
+      (cats.grades || []).forEach(function (g) { gradeMap[g.id] = g.label; });
+      var subMap = {};
+      (cats.subjects || []).forEach(function (s) { subMap[s.id] = s.label; });
+      var typeMap = {};
+      (cats.appTypes || []).forEach(function (t) { typeMap[t.id] = t.label; });
+
       var sess = getTeacherSession_();
       if (sess && sess.apps) {
         sess.apps.forEach(function (item) {
@@ -2989,13 +3107,22 @@ function openTeacherEditAppModal(app, u) {
             item.description = payload.description;
             item.learningObjective = payload.learningObjective;
             item.gradeIds = payload.gradeIds;
+            item.gradeLabels = payload.gradeIds.map(function (id) { return gradeMap[id] || id; });
             item.subjectIds = payload.subjectIds;
+            item.subjectLabels = payload.subjectIds.map(function (id) { return subMap[id] || id; });
+            item.categoryId = payload.categoryId;
+            item.categoryLabel = typeMap[payload.categoryId] || item.categoryLabel;
+            item.tags = payload.tags ? payload.tags.split(',').map(function (t) { return t.trim().toLowerCase(); }).filter(Boolean) : [];
             item.targetUrl = payload.targetUrl;
             item.thumbnailUrl = payload.thumbnailUrl;
           }
         });
         localStorage.setItem('eduapps_user_session', JSON.stringify(sess));
       }
+
+      PUBLIC_STATE.homeData = null;
+      try { localStorage.removeItem('eduapps_pub_homedata'); } catch (e) {}
+
       renderTeacherDashboard(document.getElementById('publicContent'));
     }).catch(function (err) {
       btnSubmit.disabled = false;
