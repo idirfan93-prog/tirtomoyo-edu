@@ -1346,6 +1346,123 @@ function openEditAppModal(appId) {
     modal.appendChild(form);
   }).catch(function (err) {
     modal.innerHTML = '<div class="state error"><p>' + escapeHtml(err.message) + '</p></div>';
+  });
+}
+
+/* ==========================================================================
+   6. MODAL EDIT PENGAJUAN & MODAL CHECKLIST VERIFIKASI
+   ========================================================================== */
+
+function openEditSubmissionModal(s, onSuccess) {
+  var backdrop = document.createElement('div');
+  backdrop.className = 'modal-backdrop';
+
+  var modal = document.createElement('div');
+  modal.className = 'modal';
+  modal.style.maxWidth = '760px';
+  modal.style.maxHeight = '90vh';
+  modal.style.overflowY = 'auto';
+
+  modal.innerHTML = '<div class="spinner"></div><p style="text-align:center;">Memuat form sunting...</p>';
+  backdrop.appendChild(modal);
+  document.body.appendChild(backdrop);
+
+  ensureAdminCategories_().then(function (cats) {
+    modal.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--border);padding-bottom:.75rem;">' +
+      '<h3 style="margin:0;">Edit Pengajuan Guru: ' + escapeHtml(s.title) + '</h3>' +
+      '<button type="button" class="btn btn-secondary btn-sm" id="btnCloseEditSub">✕</button>' +
+      '</div>';
+
+    modal.querySelector('#btnCloseEditSub').onclick = function () {
+      document.body.removeChild(backdrop);
+    };
+
+    var form = document.createElement('form');
+    form.style.marginTop = '1rem';
+
+    form.appendChild(createFormField('sub_title', 'Nama Aplikasi', 'text', '', true));
+    form.querySelector('#in_sub_title').value = s.title;
+
+    form.appendChild(createFormField('sub_short', 'Ringkasan Singkat', 'text', '', true));
+    form.querySelector('#in_sub_short').value = s.shortDescription;
+
+    form.appendChild(createFormField('sub_desc', 'Deskripsi Lengkap', 'textarea', '', true));
+    form.querySelector('#in_sub_desc').value = s.description;
+
+    form.appendChild(createFormField('sub_obj', 'Tujuan Pembelajaran', 'textarea', '', false));
+    form.querySelector('#in_sub_obj').value = s.learningObjective || '';
+
+    form.appendChild(buildAdminTaxonomyFields_('edit_sub', s.gradeIds, s.subjectIds, s.category ? s.category.id : '', cats));
+
+    form.appendChild(createFormField('sub_url', 'URL Aplikasi (Wajib HTTPS)', 'url', '', true, 'Perbaiki tautan di sini jika tautan awal dari guru bermasalah.'));
+    var inSubUrl = form.querySelector('#in_sub_url');
+    inSubUrl.value = s.targetUrl;
+    inSubUrl.addEventListener('blur', function () { this.value = normalizeScriptUrl(this.value); });
+    inSubUrl.addEventListener('change', function () { this.value = normalizeScriptUrl(this.value); });
+
+    form.appendChild(createThumbnailUploadField('sub_thumb', 'Gambar Sampul / Screenshot', s.thumbnailUrl || ''));
+
+    form.appendChild(createFormField('sub_dev', 'Nama Lengkap Guru', 'text', '', true));
+    form.querySelector('#in_sub_dev').value = s.creatorName;
+
+    form.appendChild(createFormField('sub_tags', 'Kata Kunci (Tags)', 'text', '', false));
+    form.querySelector('#in_sub_tags').value = (s.tags || []).join(', ');
+
+    var btnSave = document.createElement('button');
+    btnSave.type = 'submit';
+    btnSave.className = 'btn btn-primary btn-sm';
+    btnSave.style.marginTop = '1rem';
+    btnSave.textContent = 'Simpan Perubahan Pengajuan';
+    form.appendChild(btnSave);
+
+    form.onsubmit = function (e) {
+      e.preventDefault();
+      var grades = [];
+      form.querySelectorAll('input[name="edit_sub_gradeIds"]:checked').forEach(function (cb) { grades.push(cb.value); });
+      var subjects = [];
+      form.querySelectorAll('input[name="edit_sub_subjectIds"]:checked').forEach(function (cb) { subjects.push(cb.value); });
+      var catId = form.querySelector('#in_edit_sub_catId').value;
+
+      if (!grades.length) { showToast('Pilih minimal satu kelas SD.', 'error'); return; }
+      if (!subjects.length) { showToast('Pilih minimal satu mata pelajaran.', 'error'); return; }
+      if (!catId) { showToast('Pilih jenis media/aplikasi.', 'error'); return; }
+
+      btnSave.disabled = true;
+      btnSave.textContent = 'Menyimpan...';
+
+      var payload = {
+        submissionId: s.submissionId,
+        title: form.querySelector('#in_sub_title').value.trim(),
+        shortDescription: form.querySelector('#in_sub_short').value.trim(),
+        description: form.querySelector('#in_sub_desc').value.trim(),
+        learningObjective: form.querySelector('#in_sub_obj').value.trim(),
+        targetUrl: normalizeScriptUrl(form.querySelector('#in_sub_url').value),
+        thumbnailUrl: form.querySelector('#in_sub_thumb').value.trim(),
+        creatorName: form.querySelector('#in_sub_dev').value.trim(),
+        tags: form.querySelector('#in_sub_tags').value.trim(),
+        subjectIds: subjects,
+        gradeIds: grades,
+        categoryId: catId
+      };
+
+      document.body.removeChild(backdrop);
+      showToast('Menyimpan perubahan metadata...', 'info');
+
+      callApi('api_adminUpdateSubmission', payload).then(function (res) {
+        showToast(res.message || 'Perubahan pengajuan berhasil disimpan!', 'success');
+        if (onSuccess) onSuccess();
+        else loadAdminSubmissionsData(ADMIN_STATE.submissionsStatus);
+      }).catch(function (err) {
+        showToast(err.message || 'Gagal menyimpan pengajuan.', 'error');
+        loadAdminSubmissionsData(ADMIN_STATE.submissionsStatus);
+      });
+    };
+
+    modal.appendChild(form);
+  }).catch(function (err) {
+    modal.innerHTML = '<div class="state error"><p>' + escapeHtml(err.message) + '</p></div>';
+  });
+}
 
 function showVerificationChecklistModal(title) {
   return new Promise(function (resolve) {
@@ -1557,12 +1674,55 @@ function openAdminUserModal(adm, onSaved) {
 
 function renderAdminAudit(container) {
   container.innerHTML = '<h2>Riwayat Audit Log</h2><p class="muted">Catatan jejak aktivitas admin, persetujuan, dan perubahan status.</p>' +
-    '<div id="admAuditTableWrap"><div class="spinner"></div></div>';
+    '<div class="toolbar">' +
+    '<input type="search" id="admAuditQuery" placeholder="Cari aktor, aksi, ID target, atau ringkasan..." value="' + escapeHtml(ADMIN_STATE.auditFilter) + '">' +
+    '<button type="button" class="btn btn-primary btn-sm" id="btnAdmAuditFilter">Cari</button>' +
+    '<button type="button" class="btn btn-secondary btn-sm" id="btnAdmAuditReset">Reset</button>' +
+    '</div>' +
+    '<div id="admAuditTableWrap"><div class="spinner"></div></div>' +
+    '<div id="admAuditPager" class="pager"></div>';
 
+  var inQ = document.getElementById('admAuditQuery');
+  var btnF = document.getElementById('btnAdmAuditFilter');
+  var btnR = document.getElementById('btnAdmAuditReset');
+
+  btnF.onclick = function () {
+    ADMIN_STATE.auditFilter = inQ.value.trim();
+    ADMIN_STATE.auditPage = 1;
+    loadAdminAuditData();
+  };
+
+  inQ.onkeydown = function (e) {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      btnF.click();
+    }
+  };
+
+  btnR.onclick = function () {
+    inQ.value = '';
+    ADMIN_STATE.auditFilter = '';
+    ADMIN_STATE.auditPage = 1;
+    loadAdminAuditData();
+  };
+
+  loadAdminAuditData();
+}
+
+function loadAdminAuditData() {
   var wrap = document.getElementById('admAuditTableWrap');
-  callApi('api_adminListAuditLog', { page: 1, pageSize: 50 }).then(function (res) {
+  var pager = document.getElementById('admAuditPager');
+  if (!wrap) return;
+  wrap.innerHTML = '<div class="spinner"></div>';
+
+  callApi('api_adminListAuditLog', {
+    page: ADMIN_STATE.auditPage,
+    pageSize: 25,
+    query: ADMIN_STATE.auditFilter
+  }).then(function (res) {
     if (!res.items || res.items.length === 0) {
-      wrap.innerHTML = '<div class="state"><p class="muted">Belum ada catatan audit log.</p></div>';
+      wrap.innerHTML = '<div class="state"><p class="muted">Belum ada catatan audit log yang cocok.</p></div>';
+      if (pager) pager.innerHTML = '';
       return;
     }
 
@@ -1590,6 +1750,30 @@ function renderAdminAudit(container) {
     tbl.appendChild(t);
     wrap.innerHTML = '';
     wrap.appendChild(tbl);
+
+    if (pager) {
+      pager.innerHTML = '';
+      if (res.pagination.totalPages > 1) {
+        if (res.pagination.page > 1) {
+          var pBtn = document.createElement('button');
+          pBtn.className = 'btn btn-secondary btn-sm';
+          pBtn.textContent = '←';
+          pBtn.onclick = function () { ADMIN_STATE.auditPage--; loadAdminAuditData(); };
+          pager.appendChild(pBtn);
+        }
+        var pInfo = document.createElement('span');
+        pInfo.className = 'small muted';
+        pInfo.textContent = res.pagination.page + ' / ' + res.pagination.totalPages;
+        pager.appendChild(pInfo);
+        if (res.pagination.page < res.pagination.totalPages) {
+          var nBtn = document.createElement('button');
+          nBtn.className = 'btn btn-secondary btn-sm';
+          nBtn.textContent = '→';
+          nBtn.onclick = function () { ADMIN_STATE.auditPage++; loadAdminAuditData(); };
+          pager.appendChild(nBtn);
+        }
+      }
+    }
   }).catch(function (err) {
     wrap.innerHTML = '<div class="state error"><p>' + escapeHtml(err.message) + '</p></div>';
   });
