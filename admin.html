@@ -5,6 +5,7 @@
   <title>Admin Panel — Tirtomoyo EduApps</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="robots" content="noindex, nofollow">
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cdefs%3E%3ClinearGradient id='grad' x1='0%25' y1='0%25' x2='100%25' y2='100%25'%3E%3Cstop offset='0%25' stop-color='%2317365D'/%3E%3Cstop offset='100%25' stop-color='%231769E0'/%3E%3C/defs%3E%3Crect x='4' y='4' width='56' height='56' rx='16' fill='url(%23grad)'/%3E%3Ctext x='32' y='42' font-family='sans-serif' font-size='34' font-weight='800' fill='%23ffffff' text-anchor='middle'%3ET%3C/text%3E%3Ccircle cx='52' cy='12' r='7' fill='%23E53935' stroke='%23ffffff' stroke-width='2.5'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -69,8 +70,12 @@ var ADMIN_STATE = {
   activeTab: 'dashboard',
   submissionsPage: 1,
   submissionsFilter: '',
+  submissionsStatus: '',
   appsPage: 1,
   appsFilter: '',
+  appsStatus: '',
+  auditPage: 1,
+  auditFilter: '',
   categories: null
 };
 
@@ -133,6 +138,85 @@ function formatDateId(isoStr) {
   } catch (e) {
     return String(isoStr);
   }
+}
+
+function normalizeScriptUrl(url) {
+  if (!url) return '';
+  var s = String(url).trim();
+  return s.replace(/^https?:\/\/script\.google\.com\/(?:a\/(?:(?!~\/)[^\/]+\/)?|u\/\d+\/)?macros\//i, 'https://script.google.com/a/~/macros/');
+}
+
+function ensureAdminCategories_() {
+  if (ADMIN_STATE.categories) {
+    return Promise.resolve(ADMIN_STATE.categories);
+  }
+  return callApi('api_listPublicCategories').then(function (cats) {
+    ADMIN_STATE.categories = cats;
+    return cats;
+  });
+}
+
+function buildAdminTaxonomyFields_(prefix, selectedGrades, selectedSubjects, selectedCatId, cats) {
+  var wrap = document.createDocumentFragment();
+  var gradesSelected = Array.isArray(selectedGrades) ? selectedGrades : [];
+  var subjectsSelected = Array.isArray(selectedSubjects) ? selectedSubjects : [];
+
+  var fGrade = document.createElement('div');
+  fGrade.className = 'field';
+  fGrade.innerHTML = '<label class="label">Kelas Sasaran (SD) <span class="req">*</span></label>';
+  var checksGrade = document.createElement('div');
+  checksGrade.className = 'checks';
+  var defaultGrades = [
+    { id: 'SD1', label: 'Kelas 1' }, { id: 'SD2', label: 'Kelas 2' }, { id: 'SD3', label: 'Kelas 3' },
+    { id: 'SD4', label: 'Kelas 4' }, { id: 'SD5', label: 'Kelas 5' }, { id: 'SD6', label: 'Kelas 6' }
+  ];
+  var gradeList = (cats && cats.grades && cats.grades.length) ? cats.grades : defaultGrades;
+  gradeList.forEach(function (g) {
+    var isChecked = gradesSelected.indexOf(g.id) !== -1 ? ' checked' : '';
+    var lbl = document.createElement('label');
+    lbl.className = 'check';
+    lbl.innerHTML = '<input type="checkbox" name="' + prefix + '_gradeIds" value="' + escapeHtml(g.id) + '"' + isChecked + '> <span>' + escapeHtml(g.label) + '</span>';
+    checksGrade.appendChild(lbl);
+  });
+  fGrade.appendChild(checksGrade);
+  wrap.appendChild(fGrade);
+
+  var fSub = document.createElement('div');
+  fSub.className = 'field';
+  fSub.innerHTML = '<label class="label">Mata Pelajaran <span class="req">*</span></label>';
+  var checksSub = document.createElement('div');
+  checksSub.className = 'checks';
+  if (cats && cats.subjects) {
+    cats.subjects.forEach(function (s) {
+      var isChecked = subjectsSelected.indexOf(s.id) !== -1 ? ' checked' : '';
+      var lbl = document.createElement('label');
+      lbl.className = 'check';
+      lbl.innerHTML = '<input type="checkbox" name="' + prefix + '_subjectIds" value="' + escapeHtml(s.id) + '"' + isChecked + '> <span>' + escapeHtml(s.label) + '</span>';
+      checksSub.appendChild(lbl);
+    });
+  }
+  fSub.appendChild(checksSub);
+  wrap.appendChild(fSub);
+
+  var fType = document.createElement('div');
+  fType.className = 'field';
+  fType.innerHTML = '<label for="in_' + prefix + '_catId" class="label">Jenis Media/Aplikasi <span class="req">*</span></label>';
+  var selType = document.createElement('select');
+  selType.id = 'in_' + prefix + '_catId';
+  selType.innerHTML = '<option value="">-- Pilih Jenis Aplikasi --</option>';
+  if (cats && cats.appTypes) {
+    cats.appTypes.forEach(function (t) {
+      var opt = document.createElement('option');
+      opt.value = t.id;
+      opt.textContent = t.label;
+      if (selectedCatId === t.id) opt.selected = true;
+      selType.appendChild(opt);
+    });
+  }
+  fType.appendChild(selType);
+  wrap.appendChild(fType);
+
+  return wrap;
 }
 
 function showToast(message, type) {
@@ -714,17 +798,33 @@ function renderAdminSubmissions(container) {
   var btnF = document.getElementById('btnAdmSubFilter');
   var inQ = document.getElementById('admSubQuery');
   var selS = document.getElementById('admSubStatus');
+  selS.value = ADMIN_STATE.submissionsStatus || '';
 
-  btnF.onclick = function () {
+  function applySubFilter() {
     ADMIN_STATE.submissionsFilter = inQ.value.trim();
+    ADMIN_STATE.submissionsStatus = selS.value;
     ADMIN_STATE.submissionsPage = 1;
-    loadAdminSubmissionsData(selS.value);
+    loadAdminSubmissionsData(ADMIN_STATE.submissionsStatus);
+  }
+
+  btnF.onclick = applySubFilter;
+  selS.onchange = applySubFilter;
+  inQ.onkeydown = function (e) {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      applySubFilter();
+    }
   };
 
-  loadAdminSubmissionsData('');
+  loadAdminSubmissionsData(ADMIN_STATE.submissionsStatus);
 }
 
 function loadAdminSubmissionsData(statusFilter) {
+  if (statusFilter === undefined) {
+    statusFilter = ADMIN_STATE.submissionsStatus || '';
+  } else {
+    ADMIN_STATE.submissionsStatus = statusFilter;
+  }
   var wrap = document.getElementById('admSubTableWrap');
   var pager = document.getElementById('admSubPager');
   if (!wrap) return;
@@ -974,7 +1074,7 @@ function submitReviewAction(submissionId, action, reviewNote, publish, backdrop)
     }
   }).catch(function (err) {
     showToast('Gagal sinkronisasi ke server: ' + (err.message || 'Terjadi kesalahan'), 'error');
-    loadAdminSubmissionsData('');
+    loadAdminSubmissionsData(ADMIN_STATE.submissionsStatus);
   });
 }
 
@@ -995,17 +1095,33 @@ function renderAdminApps(container) {
   var btnF = document.getElementById('btnAdmAppFilter');
   var inQ = document.getElementById('admAppQuery');
   var selS = document.getElementById('admAppStatus');
+  selS.value = ADMIN_STATE.appsStatus || '';
 
-  btnF.onclick = function () {
+  function applyAppFilter() {
     ADMIN_STATE.appsFilter = inQ.value.trim();
+    ADMIN_STATE.appsStatus = selS.value;
     ADMIN_STATE.appsPage = 1;
-    loadAdminAppsData(selS.value);
+    loadAdminAppsData(ADMIN_STATE.appsStatus);
+  }
+
+  btnF.onclick = applyAppFilter;
+  selS.onchange = applyAppFilter;
+  inQ.onkeydown = function (e) {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      applyAppFilter();
+    }
   };
 
-  loadAdminAppsData('');
+  loadAdminAppsData(ADMIN_STATE.appsStatus);
 }
 
 function loadAdminAppsData(statusFilter) {
+  if (statusFilter === undefined) {
+    statusFilter = ADMIN_STATE.appsStatus || '';
+  } else {
+    ADMIN_STATE.appsStatus = statusFilter;
+  }
   var wrap = document.getElementById('admAppTableWrap');
   var pager = document.getElementById('admAppPager');
   if (!wrap) return;
@@ -1120,7 +1236,7 @@ function openEditAppModal(appId) {
 
   var modal = document.createElement('div');
   modal.className = 'modal';
-  modal.style.maxWidth = '750px';
+  modal.style.maxWidth = '760px';
   modal.style.maxHeight = '90vh';
   modal.style.overflowY = 'auto';
 
@@ -1128,9 +1244,15 @@ function openEditAppModal(appId) {
   backdrop.appendChild(modal);
   document.body.appendChild(backdrop);
 
-  callApi('api_adminGetApp', { appId: appId }).then(function (a) {
-    modal.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center;">' +
-      '<h3>Edit Metadata: ' + escapeHtml(a.title) + '</h3>' +
+  Promise.all([
+    callApi('api_adminGetApp', { appId: appId }),
+    ensureAdminCategories_()
+  ]).then(function (results) {
+    var a = results[0];
+    var cats = results[1];
+
+    modal.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--border);padding-bottom:.75rem;">' +
+      '<h3 style="margin:0;">Edit Metadata: ' + escapeHtml(a.title) + '</h3>' +
       '<button class="btn btn-secondary btn-sm" id="btnCloseEditModal">✕</button>' +
       '</div>';
 
@@ -1153,8 +1275,13 @@ function openEditAppModal(appId) {
     form.appendChild(createFormField('edit_obj', 'Tujuan Belajar', 'textarea', '', false));
     form.querySelector('#in_edit_obj').value = a.learningObjective || '';
 
+    form.appendChild(buildAdminTaxonomyFields_('edit_app', a.gradeIds, a.subjectIds, a.categoryId, cats));
+
     form.appendChild(createFormField('edit_url', 'URL Aplikasi (HTTPS)', 'url', '', true));
-    form.querySelector('#in_edit_url').value = a.targetUrl;
+    var inEditUrl = form.querySelector('#in_edit_url');
+    inEditUrl.value = a.targetUrl;
+    inEditUrl.addEventListener('blur', function () { this.value = normalizeScriptUrl(this.value); });
+    inEditUrl.addEventListener('change', function () { this.value = normalizeScriptUrl(this.value); });
 
     form.appendChild(createThumbnailUploadField('edit_thumb', 'Gambar Sampul / Tangkapan Layar', a.thumbnailUrl || ''));
 
@@ -1176,6 +1303,16 @@ function openEditAppModal(appId) {
 
     form.onsubmit = function (e) {
       e.preventDefault();
+      var grades = [];
+      form.querySelectorAll('input[name="edit_app_gradeIds"]:checked').forEach(function (cb) { grades.push(cb.value); });
+      var subjects = [];
+      form.querySelectorAll('input[name="edit_app_subjectIds"]:checked').forEach(function (cb) { subjects.push(cb.value); });
+      var catId = form.querySelector('#in_edit_app_catId').value;
+
+      if (!grades.length) { showToast('Pilih minimal satu kelas SD.', 'error'); return; }
+      if (!subjects.length) { showToast('Pilih minimal satu mata pelajaran.', 'error'); return; }
+      if (!catId) { showToast('Pilih jenis media/aplikasi.', 'error'); return; }
+
       btnSave.disabled = true;
       btnSave.textContent = 'Menyimpan...';
 
@@ -1185,20 +1322,20 @@ function openEditAppModal(appId) {
         shortDescription: form.querySelector('#in_edit_short').value.trim(),
         description: form.querySelector('#in_edit_desc').value.trim(),
         learningObjective: form.querySelector('#in_edit_obj').value.trim(),
-        targetUrl: form.querySelector('#in_edit_url').value.trim(),
+        targetUrl: normalizeScriptUrl(form.querySelector('#in_edit_url').value),
         thumbnailUrl: form.querySelector('#in_edit_thumb').value.trim(),
         creatorName: form.querySelector('#in_edit_dev').value.trim(),
         tags: form.querySelector('#in_edit_tags').value.trim(),
         adminNotes: form.querySelector('#in_edit_notes').value.trim(),
-        subjectIds: a.subjectIds,
-        gradeIds: a.gradeIds,
-        categoryId: a.categoryId
+        subjectIds: subjects,
+        gradeIds: grades,
+        categoryId: catId
       };
 
       callApi('api_adminUpdateApp', payload).then(function () {
         showToast('Perubahan aplikasi berhasil disimpan.', 'success');
         document.body.removeChild(backdrop);
-        loadAdminAppsData('');
+        loadAdminAppsData(ADMIN_STATE.appsStatus);
       }).catch(function (err) {
         btnSave.disabled = false;
         btnSave.textContent = 'Simpan Perubahan';
@@ -1209,102 +1346,6 @@ function openEditAppModal(appId) {
     modal.appendChild(form);
   }).catch(function (err) {
     modal.innerHTML = '<div class="state error"><p>' + escapeHtml(err.message) + '</p></div>';
-  });
-}
-
-/* ==========================================================================
-   6. MODAL EDIT PENGAJUAN & MODAL CHECKLIST VERIFIKASI
-   ========================================================================== */
-
-function openEditSubmissionModal(s, onSuccess) {
-  var backdrop = document.createElement('div');
-  backdrop.className = 'modal-backdrop';
-
-  var modal = document.createElement('div');
-  modal.className = 'modal';
-  modal.style.maxWidth = '750px';
-  modal.style.maxHeight = '90vh';
-  modal.style.overflowY = 'auto';
-
-  modal.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center;">' +
-    '<h3>Edit Pengajuan Guru: ' + escapeHtml(s.title) + '</h3>' +
-    '<button class="btn btn-secondary btn-sm" id="btnCloseEditSub">✕</button>' +
-    '</div>';
-
-  modal.querySelector('#btnCloseEditSub').onclick = function () {
-    document.body.removeChild(backdrop);
-  };
-
-  var form = document.createElement('form');
-  form.style.marginTop = '1rem';
-
-  form.appendChild(createFormField('sub_title', 'Nama Aplikasi', 'text', '', true));
-  form.querySelector('#in_sub_title').value = s.title;
-
-  form.appendChild(createFormField('sub_short', 'Ringkasan Singkat', 'text', '', true));
-  form.querySelector('#in_sub_short').value = s.shortDescription;
-
-  form.appendChild(createFormField('sub_desc', 'Deskripsi Lengkap', 'textarea', '', true));
-  form.querySelector('#in_sub_desc').value = s.description;
-
-  form.appendChild(createFormField('sub_obj', 'Tujuan Pembelajaran', 'textarea', '', false));
-  form.querySelector('#in_sub_obj').value = s.learningObjective || '';
-
-  form.appendChild(createFormField('sub_url', 'URL Aplikasi (Wajib HTTPS)', 'url', '', true, 'Perbaiki tautan di sini jika tautan awal dari guru bermasalah.'));
-  form.querySelector('#in_sub_url').value = s.targetUrl;
-
-  form.appendChild(createThumbnailUploadField('sub_thumb', 'Gambar Sampul / Screenshot', s.thumbnailUrl || ''));
-
-  form.appendChild(createFormField('sub_dev', 'Nama Lengkap Guru', 'text', '', true));
-  form.querySelector('#in_sub_dev').value = s.creatorName;
-
-  form.appendChild(createFormField('sub_tags', 'Kata Kunci (Tags)', 'text', '', false));
-  form.querySelector('#in_sub_tags').value = (s.tags || []).join(', ');
-
-  var btnSave = document.createElement('button');
-  btnSave.type = 'submit';
-  btnSave.className = 'btn btn-primary btn-sm';
-  btnSave.style.marginTop = '1rem';
-  btnSave.textContent = 'Simpan Perubahan Pengajuan';
-  form.appendChild(btnSave);
-
-  form.onsubmit = function (e) {
-    e.preventDefault();
-    btnSave.disabled = true;
-    btnSave.textContent = 'Menyimpan...';
-
-    var payload = {
-      submissionId: s.submissionId,
-      title: form.querySelector('#in_sub_title').value.trim(),
-      shortDescription: form.querySelector('#in_sub_short').value.trim(),
-      description: form.querySelector('#in_sub_desc').value.trim(),
-      learningObjective: form.querySelector('#in_sub_obj').value.trim(),
-      targetUrl: form.querySelector('#in_sub_url').value.trim(),
-      thumbnailUrl: form.querySelector('#in_sub_thumb').value.trim(),
-      creatorName: form.querySelector('#in_sub_dev').value.trim(),
-      tags: form.querySelector('#in_sub_tags').value.trim(),
-      subjectIds: s.subjectIds,
-      gradeIds: s.gradeIds,
-      categoryId: s.category ? s.category.id : ''
-    };
-
-    document.body.removeChild(backdrop);
-    showToast('Menyimpan perubahan metadata...', 'info');
-
-    callApi('api_adminUpdateSubmission', payload).then(function (res) {
-      showToast(res.message || 'Perubahan pengajuan berhasil disimpan!', 'success');
-      if (onSuccess) onSuccess();
-      else loadAdminSubmissionsData('');
-    }).catch(function (err) {
-      showToast(err.message || 'Gagal menyimpan pengajuan.', 'error');
-      loadAdminSubmissionsData('');
-    });
-  };
-
-  modal.appendChild(form);
-  backdrop.appendChild(modal);
-  document.body.appendChild(backdrop);
-}
 
 function showVerificationChecklistModal(title) {
   return new Promise(function (resolve) {
