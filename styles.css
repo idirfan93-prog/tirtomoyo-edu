@@ -344,6 +344,9 @@ tr:last-child td { border-bottom: 0; }
 .stat-box:not(:last-child) {
   border-right: 1px solid var(--border);
 }
+.stat-box-clone {
+  display: none;
+}
 .stat-box-icon {
   width: 48px;
   height: 48px;
@@ -397,6 +400,9 @@ tr:last-child td { border-bottom: 0; }
     border-right: none !important;
     justify-content: flex-start;
     padding: .25rem .5rem;
+  }
+  .stat-box-clone {
+    display: flex;
   }
   .stats-dots {
     display: flex;
