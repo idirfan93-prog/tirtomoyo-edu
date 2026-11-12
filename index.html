@@ -613,8 +613,7 @@ function buildHomePageDOM_(container, data) {
     if (data.stats) {
       var statsWrap = document.createElement('div');
       statsWrap.className = 'stats-banner';
-      statsWrap.innerHTML = '<div class="stats-grid" id="statsSliderTrack">' +
-        '<div class="stat-box">' +
+      var statItemsHtml = '<div class="stat-box">' +
         '<div class="stat-box-icon">📦</div>' +
         '<div class="stat-box-content"><div class="stat-box-num">' + (data.stats.totalApps || 0) + '</div><div class="stat-box-label">Aplikasi Terbit</div></div>' +
         '</div>' +
@@ -625,7 +624,23 @@ function buildHomePageDOM_(container, data) {
         '<div class="stat-box">' +
         '<div class="stat-box-icon" style="background:#FFFAEB;color:#B54708;">👨‍🏫</div>' +
         '<div class="stat-box-content"><div class="stat-box-num">' + (data.stats.totalTeachers || 0) + '</div><div class="stat-box-label">Guru Pengembang</div></div>' +
+        '</div>';
+
+      var statClonesHtml = '<div class="stat-box stat-box-clone">' +
+        '<div class="stat-box-icon">📦</div>' +
+        '<div class="stat-box-content"><div class="stat-box-num">' + (data.stats.totalApps || 0) + '</div><div class="stat-box-label">Aplikasi Terbit</div></div>' +
         '</div>' +
+        '<div class="stat-box stat-box-clone">' +
+        '<div class="stat-box-icon" style="background:#ECFDF3;color:var(--success);">🏫</div>' +
+        '<div class="stat-box-content"><div class="stat-box-num">' + (data.stats.totalSchools || 0) + '</div><div class="stat-box-label">SD Berkontribusi</div></div>' +
+        '</div>' +
+        '<div class="stat-box stat-box-clone">' +
+        '<div class="stat-box-icon" style="background:#FFFAEB;color:#B54708;">👨‍🏫</div>' +
+        '<div class="stat-box-content"><div class="stat-box-num">' + (data.stats.totalTeachers || 0) + '</div><div class="stat-box-label">Guru Pengembang</div></div>' +
+        '</div>';
+
+      statsWrap.innerHTML = '<div class="stats-grid" id="statsSliderTrack">' +
+        statItemsHtml + statClonesHtml +
         '</div>' +
         '<div class="stats-dots" id="statsDotsWrap">' +
         '<div class="stats-dot active"></div><div class="stats-dot"></div><div class="stats-dot"></div>' +
@@ -2229,34 +2244,36 @@ function initMobileStatsSlider() {
   }
 
   var currentIdx = 0;
-  var totalItems = dots.length;
   var isUserInteracting = false;
   var interactionTimeout = null;
 
   function updateDots(idx) {
-    currentIdx = idx;
+    currentIdx = idx % 3;
     dots.forEach(function (dot, i) {
-      if (i === idx) dot.classList.add('active');
+      if (i === currentIdx) dot.classList.add('active');
       else dot.classList.remove('active');
     });
   }
 
-  track.addEventListener('scroll', function () {
-    var itemWidth = track.clientWidth || 1;
-    var scrollPos = track.scrollLeft;
-    var maxScroll = track.scrollWidth - itemWidth;
+  function getMetrics() {
+    var w = track.clientWidth || 1;
+    var half = w * 3;
+    return { w: w, half: half };
+  }
 
-    var closestIdx;
-    if (scrollPos >= maxScroll - 15) {
-      closestIdx = totalItems - 1;
-    } else if (scrollPos <= 15) {
-      closestIdx = 0;
-    } else {
-      closestIdx = Math.round(scrollPos / itemWidth);
+  track.addEventListener('scroll', function () {
+    var m = getMetrics();
+    if (m.half <= 0) return;
+
+    if (track.scrollLeft >= m.half) {
+      track.scrollLeft -= m.half;
+    } else if (track.scrollLeft <= 0 && isUserInteracting) {
+      track.scrollLeft += m.half;
     }
 
-    if (closestIdx !== currentIdx && closestIdx >= 0 && closestIdx < totalItems) {
-      updateDots(closestIdx);
+    var activeIdx = Math.round(track.scrollLeft / m.w) % 3;
+    if (activeIdx !== currentIdx && activeIdx >= 0 && activeIdx < 3) {
+      updateDots(activeIdx);
     }
   }, { passive: true });
 
@@ -2265,7 +2282,7 @@ function initMobileStatsSlider() {
     if (interactionTimeout) clearTimeout(interactionTimeout);
     interactionTimeout = setTimeout(function () {
       isUserInteracting = false;
-    }, 6000);
+    }, 5000);
   }
 
   track.addEventListener('touchstart', pauseInteraction, { passive: true });
@@ -2274,16 +2291,19 @@ function initMobileStatsSlider() {
   dots.forEach(function (dot, idx) {
     dot.onclick = function () {
       pauseInteraction();
-      track.scrollTo({ left: idx * track.clientWidth, behavior: 'smooth' });
+      var m = getMetrics();
+      track.scrollTo({ left: idx * m.w, behavior: 'smooth' });
       updateDots(idx);
     };
   });
 
   window._statsSliderInterval = setInterval(function () {
     if (isUserInteracting) return;
-    var nextIdx = (currentIdx + 1) % totalItems;
-    track.scrollTo({ left: nextIdx * track.clientWidth, behavior: 'smooth' });
-    updateDots(nextIdx);
+    var m = getMetrics();
+    if (track.scrollLeft >= m.half - 15) {
+      track.scrollLeft -= m.half;
+    }
+    track.scrollTo({ left: track.scrollLeft + m.w, behavior: 'smooth' });
   }, 3500);
 }
 
