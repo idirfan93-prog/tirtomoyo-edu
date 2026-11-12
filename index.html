@@ -498,14 +498,19 @@ function parseHashParams(hash) {
 /* ---------- 1. HALAMAN BERANDA ---------- */
 
 function renderHomePage(container) {
-  if (PUBLIC_STATE.homeData) {
+  var now = new Date();
+  var currentHourTag = now.getFullYear() + '-' + now.getMonth() + '-' + now.getDate() + '-' + now.getHours();
+  var isSameHourCache = PUBLIC_STATE.homeData && PUBLIC_STATE.homeData._cachedHour === currentHourTag;
+
+  if (isSameHourCache) {
     buildHomePageDOM_(container, PUBLIC_STATE.homeData);
   } else {
     container.innerHTML = '<div class="skeleton" style="height:350px;margin-bottom:2rem;"></div><div class="skeleton" style="height:250px;"></div>';
   }
 
   callApi('api_getHomeData').then(function (data) {
-    var isFirstRender = !PUBLIC_STATE.homeData;
+    data._cachedHour = currentHourTag;
+    var wasRendered = isSameHourCache;
     PUBLIC_STATE.homeData = data;
     try {
       localStorage.setItem('eduapps_pub_homedata', JSON.stringify(data));
@@ -514,12 +519,14 @@ function renderHomePage(container) {
     var hash = window.location.hash || '#/';
     if (hash === '#/' || hash === '') {
       var isTyping = document.querySelector('.hero-search-box input:focus');
-      if (isFirstRender || !isTyping) {
+      if (!wasRendered || !isTyping) {
         buildHomePageDOM_(container, data);
       }
     }
   }).catch(function (err) {
-    if (!PUBLIC_STATE.homeData) {
+    if (PUBLIC_STATE.homeData) {
+      buildHomePageDOM_(container, PUBLIC_STATE.homeData);
+    } else {
       container.innerHTML = '<div class="container" style="padding:2rem 1rem;"><div class="state error"><h3>Gagal Memuat Beranda</h3><p>' + escapeHtml(err.message) + '</p></div></div>';
     }
   });
@@ -707,14 +714,22 @@ function buildHomePageDOM_(container, data) {
       catSec.className = 'section';
       var catHead = document.createElement('div');
       catHead.className = 'section-head';
-      var catTitle = document.createElement('h2');
-      catTitle.textContent = 'Jelajahi Mata Pelajaran';
-      catHead.appendChild(catTitle);
+      catHead.innerHTML = '<div style="display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;">' +
+        '<h2 style="margin:0;">Jelajahi Mata Pelajaran</h2>' +
+        '</div>' +
+        '<div class="daily-nav-ctrl">' +
+        '<button type="button" class="daily-nav-btn" id="subPrevBtn" aria-label="Geser mapel ke kiri">◀</button>' +
+        '<button type="button" class="daily-nav-btn" id="subNextBtn" aria-label="Geser mapel ke kanan">▶</button>' +
+        '</div>';
       catSec.appendChild(catHead);
 
       var chips = document.createElement('div');
       chips.className = 'chips';
-      data.subjects.forEach(function (sub) {
+      chips.id = 'subjectChipsTrack';
+
+      var subjectsList = (data.subjects.length >= 2) ? data.subjects.concat(data.subjects) : data.subjects;
+
+      subjectsList.forEach(function (sub) {
         var chip = document.createElement('button');
         chip.className = 'chip';
         chip.innerHTML = escapeHtml(sub.label) + ' <span class="count">' + sub.count + '</span>';
@@ -725,6 +740,7 @@ function buildHomePageDOM_(container, data) {
       });
       catSec.appendChild(chips);
       mainContainer.appendChild(catSec);
+      initSubjectChipsSlider();
     }
 
     if (data.featured && data.featured.length > 0) {
@@ -2391,6 +2407,89 @@ function initDailyPicksCarousel() {
       slideNext();
     }
   }, 3800);
+}
+
+function initSubjectChipsSlider() {
+  var track = document.getElementById('subjectChipsTrack');
+  var btnPrev = document.getElementById('subPrevBtn');
+  var btnNext = document.getElementById('subNextBtn');
+  if (!track) return;
+
+  if (window._subjectChipsInterval) {
+    clearInterval(window._subjectChipsInterval);
+    window._subjectChipsInterval = null;
+  }
+
+  var isInteracting = false;
+  var resumeTimer = null;
+
+  function pauseAutoSlide() {
+    isInteracting = true;
+    if (resumeTimer) clearTimeout(resumeTimer);
+    resumeTimer = setTimeout(function () {
+      isInteracting = false;
+    }, 4500);
+  }
+
+  function getMetrics() {
+    var firstChip = track.querySelector('.chip');
+    var step = firstChip ? Math.max(160, firstChip.offsetWidth + 12) : 180;
+    var halfWidth = track.scrollWidth / 2;
+    return { step: step, halfWidth: halfWidth };
+  }
+
+  track.addEventListener('scroll', function () {
+    var m = getMetrics();
+    if (m.halfWidth <= 0) return;
+
+    if (track.scrollLeft >= m.halfWidth) {
+      track.scrollLeft -= m.halfWidth;
+    } else if (track.scrollLeft <= 0 && isInteracting) {
+      track.scrollLeft += m.halfWidth;
+    }
+  }, { passive: true });
+
+  function slideNext() {
+    var m = getMetrics();
+    if (m.halfWidth > 0 && track.scrollLeft >= m.halfWidth - 15) {
+      track.scrollLeft -= m.halfWidth;
+    }
+    track.scrollTo({ left: track.scrollLeft + m.step, behavior: 'smooth' });
+  }
+
+  function slidePrev() {
+    var m = getMetrics();
+    if (m.halfWidth > 0 && track.scrollLeft <= 15) {
+      track.scrollLeft += m.halfWidth;
+    }
+    track.scrollTo({ left: track.scrollLeft - m.step, behavior: 'smooth' });
+  }
+
+  if (btnNext) {
+    btnNext.onclick = function (e) {
+      if (e) e.preventDefault();
+      pauseAutoSlide();
+      slideNext();
+    };
+  }
+
+  if (btnPrev) {
+    btnPrev.onclick = function (e) {
+      if (e) e.preventDefault();
+      pauseAutoSlide();
+      slidePrev();
+    };
+  }
+
+  track.addEventListener('mouseenter', function () { isInteracting = true; });
+  track.addEventListener('mouseleave', function () { isInteracting = false; });
+  track.addEventListener('touchstart', pauseAutoSlide, { passive: true });
+
+  window._subjectChipsInterval = setInterval(function () {
+    if (!isInteracting) {
+      slideNext();
+    }
+  }, 3500);
 }
 
 /* ==========================================================================
