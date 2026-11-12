@@ -425,7 +425,6 @@ tr:last-child td { border-bottom: 0; }
   gap: 1.25rem;
   overflow-x: auto;
   scroll-snap-type: x mandatory;
-  scroll-behavior: smooth;
   padding: .5rem .25rem 1.25rem;
   -webkit-overflow-scrolling: touch;
   scrollbar-width: none; /* Sembunyikan scrollbar di Firefox */
