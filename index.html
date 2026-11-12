@@ -658,7 +658,9 @@ function buildHomePageDOM_(container, data) {
       scrollWrap.className = 'daily-picks-scroll';
       scrollWrap.id = 'dailyPicksTrack';
 
-      data.dailyPicks.forEach(function (app) {
+      var picksList = (data.dailyPicks.length >= 2) ? data.dailyPicks.concat(data.dailyPicks) : data.dailyPicks;
+
+      picksList.forEach(function (app) {
         var dCard = document.createElement('div');
         dCard.className = 'daily-card';
 
@@ -2308,28 +2310,40 @@ function initDailyPicksCarousel() {
     }, 4500);
   }
 
-  function getStep() {
+  function getMetrics() {
     var firstCard = track.querySelector('.daily-card');
-    return firstCard ? (firstCard.offsetWidth + 20) : 320;
+    if (!firstCard) return { step: 330, halfWidth: 0 };
+    var step = firstCard.offsetWidth + 20;
+    var totalCards = track.querySelectorAll('.daily-card').length;
+    var halfWidth = step * (totalCards / 2);
+    return { step: step, halfWidth: halfWidth };
   }
 
-  function slideNext() {
-    var step = getStep();
-    var maxScroll = track.scrollWidth - track.clientWidth;
-    if (track.scrollLeft >= maxScroll - 15) {
-      track.scrollTo({ left: 0, behavior: 'smooth' });
-    } else {
-      track.scrollTo({ left: track.scrollLeft + step, behavior: 'smooth' });
+  track.addEventListener('scroll', function () {
+    var m = getMetrics();
+    if (m.halfWidth <= 0) return;
+
+    if (track.scrollLeft >= m.halfWidth) {
+      track.scrollLeft -= m.halfWidth;
+    } else if (track.scrollLeft <= 0 && isInteracting) {
+      track.scrollLeft += m.halfWidth;
     }
+  }, { passive: true });
+
+  function slideNext() {
+    var m = getMetrics();
+    if (m.halfWidth > 0 && track.scrollLeft >= m.halfWidth - 15) {
+      track.scrollLeft -= m.halfWidth;
+    }
+    track.scrollTo({ left: track.scrollLeft + m.step, behavior: 'smooth' });
   }
 
   function slidePrev() {
-    var step = getStep();
-    if (track.scrollLeft <= 15) {
-      track.scrollTo({ left: track.scrollWidth, behavior: 'smooth' });
-    } else {
-      track.scrollTo({ left: track.scrollLeft - step, behavior: 'smooth' });
+    var m = getMetrics();
+    if (m.halfWidth > 0 && track.scrollLeft <= 15) {
+      track.scrollLeft += m.halfWidth;
     }
+    track.scrollTo({ left: track.scrollLeft - m.step, behavior: 'smooth' });
   }
 
   if (btnNext) {
