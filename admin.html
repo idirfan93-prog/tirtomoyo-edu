@@ -143,7 +143,7 @@ function formatDateId(isoStr) {
 function normalizeScriptUrl(url) {
   if (!url) return '';
   var s = String(url).trim();
-  return s.replace(/^https?:\/\/script\.google\.com\/(?:a\/(?:(?!~\/)[^\/]+\/)?|u\/\d+\/)?macros\//i, 'https://script.google.com/a/~/macros/');
+  return s.replace(/^https?:\/\/script\.google\.com\/(?:[^?#]*\/)?macros\/(?:[^\/]+\/)?s\//i, 'https://script.google.com/a/~/macros/s/');
 }
 
 function ensureAdminCategories_() {
