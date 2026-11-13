@@ -1072,9 +1072,20 @@ function submitReviewAction(submissionId, action, reviewNote, publish, backdrop)
       if (n > 1) bSub.textContent = n - 1;
       else bSub.style.display = 'none';
     }
+    if (ADMIN_STATE.activeTab === 'dashboard') {
+      var cont = document.getElementById('adminContent');
+      if (cont) renderAdminDashboard(cont);
+    } else if (ADMIN_STATE.activeTab === 'submissions' && ADMIN_STATE.submissionsStatus) {
+      loadAdminSubmissionsData(ADMIN_STATE.submissionsStatus);
+    }
   }).catch(function (err) {
     showToast('Gagal sinkronisasi ke server: ' + (err.message || 'Terjadi kesalahan'), 'error');
-    loadAdminSubmissionsData(ADMIN_STATE.submissionsStatus);
+    if (ADMIN_STATE.activeTab === 'dashboard') {
+      var cont = document.getElementById('adminContent');
+      if (cont) renderAdminDashboard(cont);
+    } else {
+      loadAdminSubmissionsData(ADMIN_STATE.submissionsStatus);
+    }
   });
 }
 
