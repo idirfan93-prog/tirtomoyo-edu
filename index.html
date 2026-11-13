@@ -452,6 +452,12 @@ function handlePublicRoute() {
   if (!content) return;
 
   var isPlayRoute = (hash.indexOf('#/play/') === 0);
+  if (!isPlayRoute) {
+    var activeFrame = content.querySelector('iframe');
+    if (activeFrame) {
+      try { activeFrame.src = 'about:blank'; } catch (e) {}
+    }
+  }
   document.body.classList.toggle('player-mode', isPlayRoute);
 
   var nav = document.getElementById('mainNav');
@@ -705,6 +711,15 @@ function buildHomePageDOM_(container, data) {
           '</div>';
 
         dCard.innerHTML = thumb + body;
+        var dImg = dCard.querySelector('.d-thumb img');
+        if (dImg) {
+          dImg.onerror = function () {
+            var thumbWrap = dCard.querySelector('.d-thumb');
+            if (thumbWrap) {
+              thumbWrap.innerHTML = '<div class="placeholder" style="font-size:.85rem;padding:.5rem;">' + escapeHtml(app.title) + '</div>';
+            }
+          };
+        }
         scrollWrap.appendChild(dCard);
       });
 
@@ -815,11 +830,13 @@ function buildHomePageDOM_(container, data) {
 function renderCatalogPage(container, queryParams) {
   container.innerHTML = '<div class="container" style="padding:2rem 1rem;"><div class="spinner"></div><p style="text-align:center;">Memuat katalog aplikasi...</p></div>';
 
-  PUBLIC_STATE.catalogFilters.query = queryParams.q || '';
-  PUBLIC_STATE.catalogFilters.gradeIds = queryParams.grade ? [queryParams.grade] : [];
-  PUBLIC_STATE.catalogFilters.subjectIds = queryParams.subject ? [queryParams.subject] : [];
-  PUBLIC_STATE.catalogFilters.categoryIds = queryParams.type ? [queryParams.type] : [];
-  PUBLIC_STATE.catalogPage = 1;
+  if (queryParams && Object.keys(queryParams).length > 0) {
+    PUBLIC_STATE.catalogFilters.query = queryParams.q || '';
+    PUBLIC_STATE.catalogFilters.gradeIds = queryParams.grade ? [queryParams.grade] : [];
+    PUBLIC_STATE.catalogFilters.subjectIds = queryParams.subject ? [queryParams.subject] : [];
+    PUBLIC_STATE.catalogFilters.categoryIds = queryParams.type ? [queryParams.type] : [];
+    PUBLIC_STATE.catalogPage = 1;
+  }
 
   buildCatalogUI(container);
   executeCatalogSearch();
@@ -846,6 +863,19 @@ function buildCatalogUI(container) {
   inSearch.placeholder = 'Kata kunci judul/deskripsi...';
   inSearch.value = PUBLIC_STATE.catalogFilters.query;
   inSearch.oninput = function () { PUBLIC_STATE.catalogFilters.query = inSearch.value; };
+  inSearch.onkeydown = function (e) {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      PUBLIC_STATE.catalogFilters.query = inSearch.value;
+      PUBLIC_STATE.catalogPage = 1;
+      executeCatalogSearch();
+    }
+  };
+  inSearch.onsearch = function () {
+    PUBLIC_STATE.catalogFilters.query = inSearch.value;
+    PUBLIC_STATE.catalogPage = 1;
+    executeCatalogSearch();
+  };
   fSearch.appendChild(inSearch);
 
   var fGrade = document.createElement('div');
@@ -1060,11 +1090,11 @@ function renderDetailPage(container, slugOrId) {
     root.className = 'container';
 
     var backBtn = document.createElement('button');
+    backBtn.type = 'button';
     backBtn.className = 'btn-link back';
     backBtn.innerHTML = '← Kembali ke Katalog';
     backBtn.onclick = function () {
-      if (window.history.length > 1) window.history.back();
-      else window.location.hash = '#/katalog';
+      navigateTo('#/katalog');
     };
     root.appendChild(backBtn);
 
@@ -1254,11 +1284,21 @@ function renderPlayPage(container, slugOrId) {
     var leftCol = document.createElement('div');
     leftCol.style.cssText = 'display:flex;align-items:center;gap:.6rem;min-width:0;flex:1;';
 
+    var detailHash = '#/detail/' + encodeURIComponent(app.slug || app.appId);
     var btnBack = document.createElement('a');
-    btnBack.href = '#/detail/' + encodeURIComponent(app.slug || app.appId);
+    btnBack.href = detailHash;
     btnBack.className = 'btn btn-secondary btn-sm';
     btnBack.style.cssText = 'background:rgba(255,255,255,.15);color:#fff;border-color:rgba(255,255,255,.25);min-height:32px;padding:.2rem .65rem;border-radius:8px;text-decoration:none;font-size:.82rem;flex-shrink:0;white-space:nowrap;';
     btnBack.innerHTML = '← Kembali';
+    btnBack.onclick = function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      if (window.location.hash !== detailHash) {
+        window.location.replace(detailHash);
+      } else {
+        handlePublicRoute();
+      }
+    };
 
     var titleSpan = document.createElement('span');
     titleSpan.style.cssText = 'font-weight:700;font-size:.9rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;';
@@ -2627,6 +2667,8 @@ function syncNavAuthButton() {
 }
 
 function openUnifiedLoginModal() {
+  var nav = document.getElementById('mainNav');
+  if (nav) nav.classList.remove('open');
   var existing = document.getElementById('unifiedLoginBackdrop');
   if (existing) existing.remove();
 
