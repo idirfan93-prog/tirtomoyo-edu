@@ -1309,11 +1309,20 @@ function renderPlayPage(container, slugOrId) {
     leftCol.appendChild(titleSpan);
 
     var rightCol = document.createElement('div');
-    rightCol.style.cssText = 'display:flex;align-items:center;gap:.4rem;flex-shrink:0;';
+    rightCol.style.cssText = 'display:flex;align-items:center;gap:.35rem;flex-shrink:0;';
+
+    var btnReload = document.createElement('button');
+    btnReload.type = 'button';
+    btnReload.className = 'btn btn-secondary btn-sm';
+    btnReload.title = 'Muat Ulang Permainan';
+    btnReload.setAttribute('aria-label', 'Muat Ulang Permainan');
+    btnReload.style.cssText = 'background:rgba(255,255,255,.15);color:#fff;border-color:rgba(255,255,255,.25);min-height:32px;padding:.2rem .6rem;border-radius:8px;font-size:.92rem;line-height:1;white-space:nowrap;cursor:pointer;';
+    btnReload.innerHTML = '↻';
 
     var btnFull = document.createElement('button');
+    btnFull.type = 'button';
     btnFull.className = 'btn btn-secondary btn-sm';
-    btnFull.style.cssText = 'background:rgba(255,255,255,.15);color:#fff;border-color:rgba(255,255,255,.25);min-height:32px;padding:.2rem .65rem;border-radius:8px;font-size:.82rem;white-space:nowrap;';
+    btnFull.style.cssText = 'background:rgba(255,255,255,.15);color:#fff;border-color:rgba(255,255,255,.25);min-height:32px;padding:.2rem .6rem;border-radius:8px;font-size:.82rem;white-space:nowrap;';
     btnFull.innerHTML = '⛶ Layar Penuh';
 
     var btnExt = document.createElement('a');
@@ -1321,9 +1330,10 @@ function renderPlayPage(container, slugOrId) {
     btnExt.target = '_blank';
     btnExt.rel = 'noopener noreferrer';
     btnExt.className = 'btn btn-secondary btn-sm';
-    btnExt.style.cssText = 'background:rgba(255,255,255,.15);color:#fff;border-color:rgba(255,255,255,.25);min-height:32px;padding:.2rem .65rem;border-radius:8px;font-size:.82rem;text-decoration:none;white-space:nowrap;';
+    btnExt.style.cssText = 'background:rgba(255,255,255,.15);color:#fff;border-color:rgba(255,255,255,.25);min-height:32px;padding:.2rem .6rem;border-radius:8px;font-size:.82rem;text-decoration:none;white-space:nowrap;';
     btnExt.innerHTML = '↗ Buka Asli';
 
+    rightCol.appendChild(btnReload);
     rightCol.appendChild(btnFull);
     rightCol.appendChild(btnExt);
 
@@ -1339,12 +1349,28 @@ function renderPlayPage(container, slugOrId) {
     frameLoader.style.cssText = 'position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#0F172A;color:#E2E8F0;z-index:2;transition:opacity .25s ease;pointer-events:none;';
     frameLoader.innerHTML = '<div class="spinner" style="border-color:rgba(255,255,255,.2);border-top-color:#60A5FA;"></div><p style="margin:0;font-size:.9rem;">Memuat permainan...</p>';
 
+    var loaderTimer = null;
     var hideLoader = function () {
+      if (loaderTimer) {
+        clearTimeout(loaderTimer);
+        loaderTimer = null;
+      }
       if (!frameLoader.parentNode) return;
       frameLoader.style.opacity = '0';
       setTimeout(function () {
         if (frameLoader.parentNode) frameLoader.remove();
       }, 260);
+    };
+
+    var showLoader = function (msg) {
+      if (loaderTimer) clearTimeout(loaderTimer);
+      var p = frameLoader.querySelector('p');
+      if (p) p.textContent = msg || 'Memuat permainan...';
+      frameLoader.style.opacity = '1';
+      if (!frameLoader.parentNode) {
+        frameWrap.appendChild(frameLoader);
+      }
+      loaderTimer = setTimeout(hideLoader, 4500);
     };
 
     var iframe = document.createElement('iframe');
@@ -1353,7 +1379,23 @@ function renderPlayPage(container, slugOrId) {
     iframe.allow = 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; camera; microphone; fullscreen';
     iframe.style.cssText = 'width:100%;height:100%;border:none;display:block;';
     iframe.onload = hideLoader;
-    setTimeout(hideLoader, 4500);
+    loaderTimer = setTimeout(hideLoader, 4500);
+
+    btnReload.onclick = function () {
+      if (btnReload.disabled) return;
+      btnReload.disabled = true;
+      setTimeout(function () { btnReload.disabled = false; }, 1200);
+
+      showLoader('Memuat ulang permainan...');
+      trackPlay(app.appId, app.slug, true);
+
+      var rawUrl = app.targetUrl || '';
+      var hashIdx = rawUrl.indexOf('#');
+      var basePart = hashIdx === -1 ? rawUrl : rawUrl.substring(0, hashIdx);
+      var hashPart = hashIdx === -1 ? '' : rawUrl.substring(hashIdx);
+      var sep = basePart.indexOf('?') === -1 ? '?' : '&';
+      iframe.src = basePart + sep + '_r=' + Date.now() + hashPart;
+    };
 
     btnFull.onclick = function () {
       if (!document.fullscreenElement) {
@@ -2351,12 +2393,25 @@ function renderSubmissionSuccess(res) {
 
 /* ---------- HELPER PLAY COUNTER & DEBOUNCE ---------- */
 var PLAY_DEBOUNCE_MAP = {};
-function trackPlay(appId, slug) {
+function trackPlay(appId, slug, forceCount) {
   var key = appId || slug;
-  if (!key || PLAY_DEBOUNCE_MAP[key]) return;
-  PLAY_DEBOUNCE_MAP[key] = true;
-  callApi('api_trackAppPlay', { appId: appId, slug: slug }).catch(function () {});
-  setTimeout(function () { delete PLAY_DEBOUNCE_MAP[key]; }, 60000);
+  if (!key) return;
+  if (!forceCount && PLAY_DEBOUNCE_MAP[key]) return;
+  if (PLAY_DEBOUNCE_MAP[key]) {
+    clearTimeout(PLAY_DEBOUNCE_MAP[key]);
+  }
+  PLAY_DEBOUNCE_MAP[key] = setTimeout(function () {
+    delete PLAY_DEBOUNCE_MAP[key];
+  }, 60000);
+  callApi('api_trackAppPlay', { appId: appId, slug: slug }).then(function (res) {
+    if (res && typeof res.playCount === 'number' && PUBLIC_STATE.currentApp && PUBLIC_STATE.currentApp.appId === res.appId) {
+      PUBLIC_STATE.currentApp.playCount = res.playCount;
+    }
+    if (forceCount) {
+      PUBLIC_STATE.homeData = null;
+      try { localStorage.removeItem('eduapps_pub_homedata'); } catch (e) {}
+    }
+  }).catch(function () {});
 }
 
 /* ---------- HELPER BERBAGI UNIVERSAL (NATIVE SHARE API) ---------- */
