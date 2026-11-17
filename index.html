@@ -123,7 +123,292 @@ function formatDateId(isoStr) {
 function normalizeScriptUrl(url) {
   if (!url) return '';
   var s = String(url).trim();
+  if (/^html-app:\/\//i.test(s)) return s;
+  var iframeMatch = s.match(/<iframe[^>]+src\s*=\s*["']([^"']+)["']/i);
+  if (iframeMatch && iframeMatch[1]) {
+    s = iframeMatch[1].trim();
+  }
   return s.replace(/^https?:\/\/script\.google\.com\/(?:[^?#]*\/)?macros\/(?:[^\/]+\/)?s\//i, 'https://script.google.com/a/~/macros/s/');
+}
+
+function openHtmlSandboxTab_(htmlContent, title) {
+  var safeTitle = escapeHtml(title || 'Pratinjau Aplikasi HTML');
+  var escapedDoc = String(htmlContent || '')
+    .replace(/&/g, '&')
+    .replace(/"/g, '"');
+  var wrapperHtml = '<!DOCTYPE html><html lang="id"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +
+    '<title>' + safeTitle + '</title>' +
+    '<style>html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:#0F172A;}iframe{width:100%;height:100%;border:none;display:block;}</style>' +
+    '</head><body>' +
+    '<iframe sandbox="allow-scripts allow-forms allow-modals allow-popups" srcdoc="' + escapedDoc + '"></iframe>' +
+    '</body></html>';
+  var blob = new Blob([wrapperHtml], { type: 'text/html;charset=utf-8' });
+  var blobUrl = URL.createObjectURL(blob);
+  window.open(blobUrl, '_blank', 'noopener,noreferrer');
+  setTimeout(function () {
+    try { URL.revokeObjectURL(blobUrl); } catch (e) {}
+  }, 60000);
+}
+
+function createLaunchSourceField(prefix, initialUrl, labelText, required) {
+  var wrap = document.createElement('div');
+  wrap.className = 'field';
+  wrap.id = 'wrap_' + prefix + '_launch';
+
+  var lbl = document.createElement('label');
+  lbl.className = 'label';
+  lbl.innerHTML = escapeHtml(labelText || 'Sumber Aplikasi Pembelajaran') + (required ? ' <span style="color:var(--danger);">*</span>' : '');
+  wrap.appendChild(lbl);
+
+  var hiddenInput = document.createElement('input');
+  hiddenInput.type = 'hidden';
+  hiddenInput.id = 'in_' + prefix + '_url';
+  hiddenInput.value = initialUrl || '';
+  wrap.appendChild(hiddenInput);
+
+  var isInitialHtml = /^html-app:\/\//i.test(String(initialUrl || '').trim());
+  var currentMode = isInitialHtml ? 'html' : 'url';
+
+  var tabRow = document.createElement('div');
+  tabRow.style.cssText = 'display:flex;gap:.5rem;margin-bottom:.65rem;flex-wrap:wrap;';
+
+  var btnModeUrl = document.createElement('button');
+  btnModeUrl.type = 'button';
+  btnModeUrl.className = 'btn btn-sm ' + (currentMode === 'url' ? 'btn-primary' : 'btn-secondary');
+  btnModeUrl.textContent = '🌐 Tautan Web / Kode Embed';
+
+  var btnModeHtml = document.createElement('button');
+  btnModeHtml.type = 'button';
+  btnModeHtml.className = 'btn btn-sm ' + (currentMode === 'html' ? 'btn-primary' : 'btn-secondary');
+  btnModeHtml.textContent = '📄 Kode HTML / Upload .html';
+
+  tabRow.appendChild(btnModeUrl);
+  tabRow.appendChild(btnModeHtml);
+  wrap.appendChild(tabRow);
+
+  var urlPanel = document.createElement('div');
+  var visUrlInput = document.createElement('input');
+  visUrlInput.type = 'text';
+  visUrlInput.id = 'in_' + prefix + '_url_visible';
+  visUrlInput.placeholder = 'https://script.google.com/... atau tempel kode <iframe src="...">';
+  visUrlInput.value = isInitialHtml ? '' : (initialUrl || '');
+
+  var urlHint = document.createElement('p');
+  urlHint.className = 'small muted';
+  urlHint.style.margin = '.35rem 0 0';
+  urlHint.textContent = 'Mendukung tautan Web App Apps Script (termasuk akun belajar.id) maupun kode embed <iframe> dari Wordwall, Canva, Scratch, PhET, atau YouTube.';
+
+  var syncUrlValue = function () {
+    var raw = visUrlInput.value.trim();
+    var cleaned = normalizeScriptUrl(raw);
+    if (cleaned && cleaned !== raw) {
+      visUrlInput.value = cleaned;
+      urlHint.textContent = 'Tautan berhasil diekstrak dan diseragamkan otomatis.';
+      urlHint.style.color = '#059669';
+    }
+    hiddenInput.value = cleaned;
+  };
+  visUrlInput.addEventListener('input', function () {
+    hiddenInput.value = normalizeScriptUrl(visUrlInput.value);
+  });
+  visUrlInput.addEventListener('blur', syncUrlValue);
+  visUrlInput.addEventListener('change', syncUrlValue);
+
+  urlPanel.appendChild(visUrlInput);
+  urlPanel.appendChild(urlHint);
+  wrap.appendChild(urlPanel);
+
+  var htmlPanel = document.createElement('div');
+  htmlPanel.style.cssText = 'border:1px solid var(--border);border-radius:10px;padding:.85rem;background:#F8FAFC;';
+
+  var topTools = document.createElement('div');
+  topTools.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:.5rem;flex-wrap:wrap;margin-bottom:.6rem;';
+
+  var fileInput = document.createElement('input');
+  fileInput.type = 'file';
+  fileInput.accept = '.html,.htm,text/html';
+  fileInput.style.display = 'none';
+
+  var btnPickFile = document.createElement('button');
+  btnPickFile.type = 'button';
+  btnPickFile.className = 'btn btn-secondary btn-sm';
+  btnPickFile.textContent = '📂 Pilih Berkas .html dari Perangkat';
+  btnPickFile.onclick = function () { fileInput.click(); };
+
+  var fileLabel = document.createElement('span');
+  fileLabel.className = 'small muted';
+  fileLabel.textContent = 'Maksimal 1,5 MB (hasil Gemini Canvas / ChatGPT)';
+
+  topTools.appendChild(btnPickFile);
+  topTools.appendChild(fileLabel);
+  htmlPanel.appendChild(topTools);
+  htmlPanel.appendChild(fileInput);
+
+  var htmlArea = document.createElement('textarea');
+  htmlArea.id = 'in_' + prefix + '_html_code';
+  htmlArea.rows = 7;
+  htmlArea.style.cssText = 'font-family:monospace;font-size:.82rem;background:#fff;';
+  htmlArea.placeholder = 'Tempel kode <!DOCTYPE html>... lengkap di sini atau unggah berkas .html di atas...';
+  htmlPanel.appendChild(htmlArea);
+
+  var statusBox = document.createElement('div');
+  statusBox.style.cssText = 'margin-top:.5rem;font-size:.82rem;';
+  if (isInitialHtml) {
+    statusBox.innerHTML = '<span style="color:#059669;font-weight:600;">✅ Berkas HTML sudah tersimpan (' + escapeHtml(initialUrl) + ').</span> <span class="muted">Tempel kode baru di atas jika ingin menggantinya.</span>';
+  } else {
+    statusBox.innerHTML = '<span class="muted">Tempel kode HTML lalu klik <strong>Simpan Kode HTML</strong> atau langsung lanjutkan pengiriman.</span>';
+  }
+  htmlPanel.appendChild(statusBox);
+
+  var actionRow = document.createElement('div');
+  actionRow.style.cssText = 'display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.65rem;';
+
+  var btnPreviewHtml = document.createElement('button');
+  btnPreviewHtml.type = 'button';
+  btnPreviewHtml.className = 'btn btn-secondary btn-sm';
+  btnPreviewHtml.textContent = '👁️ Pratinjau HTML';
+  btnPreviewHtml.onclick = function () {
+    var code = htmlArea.value.trim();
+    if (!code) {
+      if (/^html-app:\/\//i.test(hiddenInput.value)) {
+        btnPreviewHtml.disabled = true;
+        callApi('api_getHtmlAppContent', { targetUrl: hiddenInput.value }).then(function (res) {
+          btnPreviewHtml.disabled = false;
+          openHtmlSandboxTab_(res.htmlContent, 'Pratinjau Aplikasi HTML');
+        }).catch(function (err) {
+          btnPreviewHtml.disabled = false;
+          showToast(err.message || 'Gagal memuat pratinjau HTML.', 'error');
+        });
+        return;
+      }
+      showToast('Tempel kode HTML atau pilih berkas .html terlebih dahulu.', 'error');
+      return;
+    }
+    openHtmlSandboxTab_(code, 'Pratinjau Aplikasi HTML');
+  };
+
+  var btnUploadHtml = document.createElement('button');
+  btnUploadHtml.type = 'button';
+  btnUploadHtml.className = 'btn btn-primary btn-sm';
+  btnUploadHtml.textContent = '☁️ Simpan Kode HTML';
+
+  var lastUploadedCode = '';
+  var lastFileName = 'aplikasi.html';
+
+  var uploadHtmlNow = function () {
+    var code = htmlArea.value.trim();
+    if (!code) {
+      if (/^html-app:\/\//i.test(hiddenInput.value)) {
+        return Promise.resolve(hiddenInput.value);
+      }
+      return Promise.reject(new Error('Kode HTML masih kosong.'));
+    }
+    if (code === lastUploadedCode && /^html-app:\/\//i.test(hiddenInput.value)) {
+      return Promise.resolve(hiddenInput.value);
+    }
+    btnUploadHtml.disabled = true;
+    btnUploadHtml.textContent = 'Menyimpan HTML...';
+    statusBox.innerHTML = '<span style="color:#2563EB;">⏳ Mengunggah berkas HTML ke penyimpanan portal...</span>';
+
+    return callApi('api_uploadHtmlApp', {
+      htmlContent: code,
+      fileName: lastFileName
+    }).then(function (res) {
+      btnUploadHtml.disabled = false;
+      btnUploadHtml.textContent = '☁️ Simpan Kode HTML';
+      lastUploadedCode = code;
+      hiddenInput.value = res.targetUrl;
+      statusBox.innerHTML = '<span style="color:#059669;font-weight:600;">✅ Kode HTML tersimpan (' + Math.round((res.sizeBytes || code.length) / 1024) + ' KB) dan siap diterbitkan.</span>';
+      return res.targetUrl;
+    }).catch(function (err) {
+      btnUploadHtml.disabled = false;
+      btnUploadHtml.textContent = '☁️ Simpan Kode HTML';
+      statusBox.innerHTML = '<span style="color:#DC2626;">❌ ' + escapeHtml(err.message || 'Gagal menyimpan HTML.') + '</span>';
+      throw err;
+    });
+  };
+
+  btnUploadHtml.onclick = function () {
+    uploadHtmlNow().then(function () {
+      showToast('Kode HTML berhasil disimpan ke server!', 'success');
+    }).catch(function (err) {
+      showToast(err.message || 'Gagal mengunggah kode HTML.', 'error');
+    });
+  };
+
+  fileInput.onchange = function () {
+    var file = fileInput.files && fileInput.files[0];
+    if (!file) return;
+    if (file.size > 1500000) {
+      showToast('Ukuran file .html maksimal 1,5 MB.', 'error');
+      fileInput.value = '';
+      return;
+    }
+    lastFileName = file.name || 'aplikasi.html';
+    fileLabel.textContent = 'Berkas: ' + lastFileName;
+    var reader = new FileReader();
+    reader.onload = function (ev) {
+      htmlArea.value = String(ev.target.result || '');
+      uploadHtmlNow().then(function () {
+        showToast('Berkas ' + lastFileName + ' berhasil diunggah!', 'success');
+      }).catch(function () {});
+    };
+    reader.readAsText(file, 'UTF-8');
+  };
+
+  htmlArea.addEventListener('input', function () {
+    if (htmlArea.value.trim() !== lastUploadedCode && !isInitialHtml) {
+      hiddenInput.value = '';
+    }
+  });
+
+  actionRow.appendChild(btnPreviewHtml);
+  actionRow.appendChild(btnUploadHtml);
+  htmlPanel.appendChild(actionRow);
+  wrap.appendChild(htmlPanel);
+
+  var setMode = function (mode) {
+    currentMode = mode;
+    wrap.dataset.launchMode = mode;
+    if (mode === 'url') {
+      btnModeUrl.className = 'btn btn-sm btn-primary';
+      btnModeHtml.className = 'btn btn-sm btn-secondary';
+      urlPanel.style.display = 'block';
+      htmlPanel.style.display = 'none';
+      hiddenInput.value = normalizeScriptUrl(visUrlInput.value);
+    } else {
+      btnModeUrl.className = 'btn btn-sm btn-secondary';
+      btnModeHtml.className = 'btn btn-sm btn-primary';
+      urlPanel.style.display = 'none';
+      htmlPanel.style.display = 'block';
+      if (lastUploadedCode && htmlArea.value.trim() === lastUploadedCode) {
+        hiddenInput.value = hiddenInput.value || '';
+      }
+    }
+  };
+
+  btnModeUrl.onclick = function () { setMode('url'); };
+  btnModeHtml.onclick = function () { setMode('html'); };
+  setMode(currentMode);
+
+  wrap._resolveLaunchUrl = function () {
+    if (currentMode === 'url') {
+      syncUrlValue();
+      return Promise.resolve(hiddenInput.value.trim());
+    }
+    return uploadHtmlNow();
+  };
+
+  return wrap;
+}
+
+function resolveLaunchUrlBeforeSubmit_(prefix) {
+  var wrap = document.getElementById('wrap_' + prefix + '_launch');
+  if (wrap && typeof wrap._resolveLaunchUrl === 'function') {
+    return wrap._resolveLaunchUrl();
+  }
+  var inp = document.getElementById('in_' + prefix + '_url');
+  return Promise.resolve(inp ? normalizeScriptUrl(inp.value) : '');
 }
 
 function showToast(message, type) {
@@ -1206,16 +1491,30 @@ function renderDetailPage(container, slugOrId) {
     };
     actPanel.appendChild(launchBtn);
 
+    var isDetailHtmlApp = Boolean(app.isHtmlContainer || /^html-app:\/\//i.test(String(app.targetUrl || '')));
     var externalBtn = document.createElement('a');
-    externalBtn.href = app.targetUrl;
-    externalBtn.target = '_blank';
-    externalBtn.rel = 'noopener noreferrer';
+    externalBtn.href = isDetailHtmlApp ? '#open-html-tab' : app.targetUrl;
+    if (!isDetailHtmlApp) {
+      externalBtn.target = '_blank';
+      externalBtn.rel = 'noopener noreferrer';
+    }
     externalBtn.className = 'btn btn-secondary btn-sm';
     externalBtn.style.width = '100%';
     externalBtn.style.marginTop = '.5rem';
     externalBtn.innerHTML = '↗ Buka di Tab Terpisah';
-    externalBtn.onclick = function () {
+    externalBtn.onclick = function (e) {
       trackPlay(app.appId, app.slug);
+      if (isDetailHtmlApp) {
+        e.preventDefault();
+        externalBtn.textContent = '⏳ Membuka aplikasi...';
+        callApi('api_getHtmlAppContent', { targetUrl: app.targetUrl }).then(function (res) {
+          externalBtn.innerHTML = '↗ Buka di Tab Terpisah';
+          openHtmlSandboxTab_(res.htmlContent, app.title);
+        }).catch(function (err) {
+          externalBtn.innerHTML = '↗ Buka di Tab Terpisah';
+          showToast(err.message || 'Gagal membuka aplikasi HTML.', 'error');
+        });
+      }
     };
     actPanel.appendChild(externalBtn);
 
@@ -1308,6 +1607,9 @@ function renderPlayPage(container, slugOrId) {
     leftCol.appendChild(btnBack);
     leftCol.appendChild(titleSpan);
 
+    var isHtmlApp = Boolean(app.isHtmlContainer || /^html-app:\/\//i.test(String(app.targetUrl || '')));
+    var cachedHtmlSource = '';
+
     var rightCol = document.createElement('div');
     rightCol.style.cssText = 'display:flex;align-items:center;gap:.35rem;flex-shrink:0;';
 
@@ -1326,12 +1628,30 @@ function renderPlayPage(container, slugOrId) {
     btnFull.innerHTML = '⛶ Layar Penuh';
 
     var btnExt = document.createElement('a');
-    btnExt.href = app.targetUrl;
-    btnExt.target = '_blank';
-    btnExt.rel = 'noopener noreferrer';
+    btnExt.href = isHtmlApp ? '#play-external' : app.targetUrl;
+    if (!isHtmlApp) {
+      btnExt.target = '_blank';
+      btnExt.rel = 'noopener noreferrer';
+    }
     btnExt.className = 'btn btn-secondary btn-sm';
     btnExt.style.cssText = 'background:rgba(255,255,255,.15);color:#fff;border-color:rgba(255,255,255,.25);min-height:32px;padding:.2rem .6rem;border-radius:8px;font-size:.82rem;text-decoration:none;white-space:nowrap;';
     btnExt.innerHTML = '↗ Buka Asli';
+
+    if (isHtmlApp) {
+      btnExt.onclick = function (e) {
+        e.preventDefault();
+        if (cachedHtmlSource) {
+          openHtmlSandboxTab_(cachedHtmlSource, app.title);
+          return;
+        }
+        callApi('api_getHtmlAppContent', { targetUrl: app.targetUrl }).then(function (res) {
+          cachedHtmlSource = res.htmlContent || '';
+          openHtmlSandboxTab_(cachedHtmlSource, app.title);
+        }).catch(function (err) {
+          showToast(err.message || 'Gagal membuka aplikasi HTML.', 'error');
+        });
+      };
+    }
 
     rightCol.appendChild(btnReload);
     rightCol.appendChild(btnFull);
@@ -1374,12 +1694,34 @@ function renderPlayPage(container, slugOrId) {
     };
 
     var iframe = document.createElement('iframe');
-    iframe.src = app.targetUrl;
     iframe.title = app.title;
     iframe.allow = 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; camera; microphone; fullscreen';
     iframe.style.cssText = 'width:100%;height:100%;border:none;display:block;';
     iframe.onload = hideLoader;
-    loaderTimer = setTimeout(hideLoader, 4500);
+
+    var loadHtmlContainer = function (forceRefresh) {
+      if (!forceRefresh && cachedHtmlSource) {
+        iframe.srcdoc = cachedHtmlSource;
+        hideLoader();
+        return;
+      }
+      callApi('api_getHtmlAppContent', { targetUrl: app.targetUrl }).then(function (res) {
+        cachedHtmlSource = res.htmlContent || '';
+        iframe.srcdoc = cachedHtmlSource;
+      }).catch(function (err) {
+        hideLoader();
+        frameWrap.innerHTML = '<div class="state error" style="margin:2rem auto;max-width:480px;"><p>' + escapeHtml(err.message || 'Gagal memuat aplikasi HTML.') + '</p></div>';
+      });
+    };
+
+    if (isHtmlApp) {
+      iframe.setAttribute('sandbox', 'allow-scripts allow-forms allow-modals allow-popups');
+      loaderTimer = setTimeout(hideLoader, 6000);
+      loadHtmlContainer(false);
+    } else {
+      iframe.src = app.targetUrl;
+      loaderTimer = setTimeout(hideLoader, 4500);
+    }
 
     btnReload.onclick = function () {
       if (btnReload.disabled) return;
@@ -1388,6 +1730,12 @@ function renderPlayPage(container, slugOrId) {
 
       showLoader('Memuat ulang permainan...');
       trackPlay(app.appId, app.slug, true);
+
+      if (isHtmlApp) {
+        iframe.srcdoc = '';
+        setTimeout(function () { loadHtmlContainer(true); }, 60);
+        return;
+      }
 
       var rawUrl = app.targetUrl || '';
       var hashIdx = rawUrl.indexOf('#');
@@ -1722,22 +2070,20 @@ function renderSubmissionPage(container) {
   step1.appendChild(createFormField('tags', 'Kata Kunci / Tag', 'text', 'pecahan, matematika, latihan, kuis', false, 'Pisahkan dengan koma (maks. 8 tag).'));
   body.appendChild(step1);
 
-  /* ----- LANGKAH 2 ----- */
   var step2 = document.createElement('div');
   step2.id = 'wizardStep_2';
   step2.className = 'wizard-step-content';
   step2.style.display = 'none';
 
-  var fTargetUrl = createFormField('targetUrl', 'Alamat URL Aplikasi Pembelajaran', 'url', 'https://...', true, 'Wajib HTTPS dan dapat dibuka langsung oleh siswa/guru.');
-  var inTarget = fTargetUrl.querySelector('#in_targetUrl');
-  if (inTarget) {
-    inTarget.addEventListener('blur', function () {
-      this.value = normalizeScriptUrl(this.value);
-    });
-    inTarget.addEventListener('change', function () {
-      this.value = normalizeScriptUrl(this.value);
-    });
-  }
+  var fTargetUrl = createLaunchSourceField('sub', '', 'Sumber Aplikasi Pembelajaran', true);
+  var hiddenTarget = fTargetUrl.querySelector('#in_sub_url');
+  if (hiddenTarget) hiddenTarget.name = 'targetUrl';
+  var errTarget = document.createElement('div');
+  errTarget.className = 'field-error';
+  errTarget.style.display = 'none';
+  fTargetUrl.id = 'field_targetUrl';
+  fTargetUrl.appendChild(errTarget);
+
   step2.appendChild(fTargetUrl);
   step2.appendChild(createThumbnailUploadField('thumbnailUrl', 'Gambar Sampul / Tangkapan Layar (Opsional)', ''));
   body.appendChild(step2);
@@ -1860,6 +2206,22 @@ function renderSubmissionPage(container) {
   };
 
   btnNext.onclick = function () {
+    if (SUBMISSION_WIZARD_STEP === 2) {
+      btnNext.disabled = true;
+      var oldNextText = btnNext.textContent;
+      btnNext.textContent = 'Memproses...';
+      resolveLaunchUrlBeforeSubmit_('sub').then(function () {
+        btnNext.disabled = false;
+        btnNext.textContent = oldNextText;
+        if (validateCurrentStep(2, form)) setWizardStep(3, form);
+      }).catch(function (err) {
+        btnNext.disabled = false;
+        btnNext.textContent = oldNextText;
+        applyFormErrors({ targetUrl: err.message || 'Sumber aplikasi belum lengkap.' });
+        showToast(err.message || 'Harap periksa sumber aplikasi.', 'error');
+      });
+      return;
+    }
     if (validateCurrentStep(SUBMISSION_WIZARD_STEP, form)) setWizardStep(SUBMISSION_WIZARD_STEP + 1, form);
   };
 
@@ -1953,8 +2315,10 @@ function validateCurrentStep(step, form) {
     var targetUrl = (inUrl ? inUrl.value : '').trim();
     var thumbnailUrl = (form.querySelector('[name="thumbnailUrl"]').value || '').trim();
 
-    if (!targetUrl) errors.targetUrl = 'Alamat URL aplikasi wajib diisi.';
-    else if (targetUrl.indexOf('https://') !== 0) errors.targetUrl = 'URL aplikasi harus diawali https://';
+    if (!targetUrl) errors.targetUrl = 'Tautan https:// atau kode HTML aplikasi wajib diisi.';
+    else if (targetUrl.indexOf('https://') !== 0 && !/^html-app:\/\/[a-zA-Z0-9_-]{10,120}$/.test(targetUrl)) {
+      errors.targetUrl = 'Masukkan tautan https:// yang valid atau simpan kode HTML terlebih dahulu.';
+    }
     if (thumbnailUrl && thumbnailUrl.indexOf('https://') !== 0) errors.thumbnailUrl = 'URL gambar harus diawali https://';
   } else if (step === 3) {
     var creatorName = (form.querySelector('[name="creatorName"]').value || '').trim();
@@ -2000,7 +2364,8 @@ function renderStep4Summary(form) {
   var title = form.querySelector('[name="title"]').value || '-';
   var creator = form.querySelector('[name="creatorName"]').value || '-';
   var schoolName = form.querySelector('#in_school_name_display') ? form.querySelector('#in_school_name_display').textContent : '-';
-  var url = form.querySelector('[name="targetUrl"]').value || '-';
+  var rawUrlVal = form.querySelector('[name="targetUrl"]').value || '-';
+  var url = /^html-app:\/\//i.test(rawUrlVal) ? '📄 Aplikasi HTML Container (Tersimpan di Server)' : rawUrlVal;
   var thumb = form.querySelector('[name="thumbnailUrl"]').value;
 
   var grades = [];
@@ -3123,15 +3488,7 @@ function openTeacherEditAppModal(app, u) {
   form.appendChild(createFormField('edit_tags', 'Kata Kunci (Tags)', 'text', '', false));
   form.querySelector('#in_edit_tags').value = (app.tags || []).join(', ');
 
-  form.appendChild(createFormField('edit_url', 'URL Aplikasi Pembelajaran (Wajib HTTPS)', 'url', '', true));
-  var inEditUrl = form.querySelector('#in_edit_url');
-  inEditUrl.value = app.targetUrl;
-  inEditUrl.addEventListener('blur', function () {
-    this.value = normalizeScriptUrl(this.value);
-  });
-  inEditUrl.addEventListener('change', function () {
-    this.value = normalizeScriptUrl(this.value);
-  });
+  form.appendChild(createLaunchSourceField('edit', app.targetUrl, 'Sumber Aplikasi Pembelajaran', true));
 
   form.appendChild(createThumbnailUploadField('edit_thumb', 'Gambar Sampul / Tangkapan Layar (Google Drive)', app.thumbnailUrl || ''));
 
@@ -3167,22 +3524,32 @@ function openTeacherEditAppModal(app, u) {
     btnSubmit.disabled = true;
     btnSubmit.textContent = '⏳ Menyimpan...';
 
-    var payload = {
-      identifier: u.contact || u.email,
-      appId: app.appId,
-      title: form.querySelector('#in_edit_title').value.trim(),
-      shortDescription: form.querySelector('#in_edit_short').value.trim(),
-      description: form.querySelector('#in_edit_desc').value.trim(),
-      learningObjective: form.querySelector('#in_edit_obj').value.trim(),
-      gradeIds: grades,
-      subjectIds: subjects,
-      categoryId: form.querySelector('#in_edit_catId').value,
-      tags: form.querySelector('#in_edit_tags').value.trim(),
-      targetUrl: normalizeScriptUrl(form.querySelector('#in_edit_url').value),
-      thumbnailUrl: form.querySelector('#in_edit_thumb').value.trim()
-    };
+    resolveLaunchUrlBeforeSubmit_('edit').then(function (resolvedUrl) {
+      if (!resolvedUrl) {
+        throw new Error('Sumber aplikasi (tautan atau kode HTML) wajib diisi.');
+      }
 
-    callApi('api_teacherUpdateApp', payload).then(function (res) {
+      var payload = {
+        identifier: u.contact || u.email,
+        appId: app.appId,
+        title: form.querySelector('#in_edit_title').value.trim(),
+        shortDescription: form.querySelector('#in_edit_short').value.trim(),
+        description: form.querySelector('#in_edit_desc').value.trim(),
+        learningObjective: form.querySelector('#in_edit_obj').value.trim(),
+        gradeIds: grades,
+        subjectIds: subjects,
+        categoryId: form.querySelector('#in_edit_catId').value,
+        tags: form.querySelector('#in_edit_tags').value.trim(),
+        targetUrl: resolvedUrl,
+        thumbnailUrl: form.querySelector('#in_edit_thumb').value.trim()
+      };
+
+      return callApi('api_teacherUpdateApp', payload).then(function (res) {
+        return { res: res, payload: payload };
+      });
+    }).then(function (result) {
+      var res = result.res;
+      var payload = result.payload;
       showToast(res.message || 'Aplikasi berhasil diperbarui!', 'success');
       backdrop.remove();
 
