@@ -152,17 +152,8 @@ function normalizeScriptUrl(url) {
 }
 
 function openHtmlSandboxTab_(htmlContent, title) {
-  var safeTitle = escapeHtml(title || 'Pratinjau Aplikasi HTML');
-  var escapedDoc = String(htmlContent || '')
-    .replace(/&/g, '&')
-    .replace(/"/g, '"');
-  var wrapperHtml = '<!DOCTYPE html><html lang="id"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +
-    '<title>' + safeTitle + '</title>' +
-    '<style>html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:#0F172A;}iframe{width:100%;height:100%;border:none;display:block;}</style>' +
-    '</head><body>' +
-    '<iframe sandbox="allow-scripts allow-forms allow-modals allow-popups" srcdoc="' + escapedDoc + '"></iframe>' +
-    '</body></html>';
-  var blob = new Blob([wrapperHtml], { type: 'text/html;charset=utf-8' });
+  var rawHtml = String(htmlContent || '');
+  var blob = new Blob([rawHtml], { type: 'text/html;charset=utf-8' });
   var blobUrl = URL.createObjectURL(blob);
   window.open(blobUrl, '_blank', 'noopener,noreferrer');
   setTimeout(function () {
