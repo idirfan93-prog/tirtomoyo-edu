@@ -143,7 +143,303 @@ function formatDateId(isoStr) {
 function normalizeScriptUrl(url) {
   if (!url) return '';
   var s = String(url).trim();
+  if (/^html-app:\/\//i.test(s)) return s;
+  var iframeMatch = s.match(/<iframe[^>]+src\s*=\s*["']([^"']+)["']/i);
+  if (iframeMatch && iframeMatch[1]) {
+    s = iframeMatch[1].trim();
+  }
   return s.replace(/^https?:\/\/script\.google\.com\/(?:[^?#]*\/)?macros\/(?:[^\/]+\/)?s\//i, 'https://script.google.com/a/~/macros/s/');
+}
+
+function openHtmlSandboxTab_(htmlContent, title) {
+  var safeTitle = escapeHtml(title || 'Pratinjau Aplikasi HTML');
+  var escapedDoc = String(htmlContent || '')
+    .replace(/&/g, '&')
+    .replace(/"/g, '"');
+  var wrapperHtml = '<!DOCTYPE html><html lang="id"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +
+    '<title>' + safeTitle + '</title>' +
+    '<style>html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:#0F172A;}iframe{width:100%;height:100%;border:none;display:block;}</style>' +
+    '</head><body>' +
+    '<iframe sandbox="allow-scripts allow-forms allow-modals allow-popups" srcdoc="' + escapedDoc + '"></iframe>' +
+    '</body></html>';
+  var blob = new Blob([wrapperHtml], { type: 'text/html;charset=utf-8' });
+  var blobUrl = URL.createObjectURL(blob);
+  window.open(blobUrl, '_blank', 'noopener,noreferrer');
+  setTimeout(function () {
+    try { URL.revokeObjectURL(blobUrl); } catch (e) {}
+  }, 60000);
+}
+
+function previewHtmlContainerByUrl_(targetUrl, title, triggerBtn) {
+  var oldHtml = triggerBtn ? triggerBtn.innerHTML : '';
+  if (triggerBtn) {
+    triggerBtn.disabled = true;
+    triggerBtn.textContent = '⏳ Membuka...';
+  }
+  callApi('api_getHtmlAppContent', { targetUrl: targetUrl }).then(function (res) {
+    if (triggerBtn) {
+      triggerBtn.disabled = false;
+      triggerBtn.innerHTML = oldHtml;
+    }
+    openHtmlSandboxTab_(res.htmlContent, title || 'Pratinjau Aplikasi HTML');
+  }).catch(function (err) {
+    if (triggerBtn) {
+      triggerBtn.disabled = false;
+      triggerBtn.innerHTML = oldHtml;
+    }
+    showToast(err.message || 'Gagal membuka aplikasi HTML.', 'error');
+  });
+}
+
+function createLaunchSourceField(prefix, initialUrl, labelText, required) {
+  var wrap = document.createElement('div');
+  wrap.className = 'field';
+  wrap.id = 'wrap_' + prefix + '_launch';
+
+  var lbl = document.createElement('label');
+  lbl.className = 'label';
+  lbl.innerHTML = escapeHtml(labelText || 'Sumber Aplikasi Pembelajaran') + (required ? ' <span class="req">*</span>' : '');
+  wrap.appendChild(lbl);
+
+  var hiddenInput = document.createElement('input');
+  hiddenInput.type = 'hidden';
+  hiddenInput.id = 'in_' + prefix + '_url';
+  hiddenInput.value = initialUrl || '';
+  wrap.appendChild(hiddenInput);
+
+  var isInitialHtml = /^html-app:\/\//i.test(String(initialUrl || '').trim());
+  var currentMode = isInitialHtml ? 'html' : 'url';
+
+  var tabRow = document.createElement('div');
+  tabRow.style.cssText = 'display:flex;gap:.5rem;margin-bottom:.65rem;flex-wrap:wrap;';
+
+  var btnModeUrl = document.createElement('button');
+  btnModeUrl.type = 'button';
+  btnModeUrl.className = 'btn btn-sm ' + (currentMode === 'url' ? 'btn-primary' : 'btn-secondary');
+  btnModeUrl.textContent = '🌐 Tautan Web / Kode Embed';
+
+  var btnModeHtml = document.createElement('button');
+  btnModeHtml.type = 'button';
+  btnModeHtml.className = 'btn btn-sm ' + (currentMode === 'html' ? 'btn-primary' : 'btn-secondary');
+  btnModeHtml.textContent = '📄 Kode HTML / Upload .html';
+
+  tabRow.appendChild(btnModeUrl);
+  tabRow.appendChild(btnModeHtml);
+  wrap.appendChild(tabRow);
+
+  var urlPanel = document.createElement('div');
+  var visUrlInput = document.createElement('input');
+  visUrlInput.type = 'text';
+  visUrlInput.id = 'in_' + prefix + '_url_visible';
+  visUrlInput.placeholder = 'https://script.google.com/... atau tempel kode <iframe src="...">';
+  visUrlInput.value = isInitialHtml ? '' : (initialUrl || '');
+
+  var urlHint = document.createElement('p');
+  urlHint.className = 'small muted';
+  urlHint.style.margin = '.35rem 0 0';
+  urlHint.textContent = 'Mendukung tautan Web App Apps Script (termasuk belajar.id) maupun kode embed <iframe>.';
+
+  var syncUrlValue = function () {
+    var raw = visUrlInput.value.trim();
+    var cleaned = normalizeScriptUrl(raw);
+    if (cleaned && cleaned !== raw) {
+      visUrlInput.value = cleaned;
+      urlHint.textContent = 'Tautan berhasil diekstrak dan diseragamkan otomatis.';
+      urlHint.style.color = '#059669';
+    }
+    hiddenInput.value = cleaned;
+  };
+  visUrlInput.addEventListener('input', function () {
+    hiddenInput.value = normalizeScriptUrl(visUrlInput.value);
+  });
+  visUrlInput.addEventListener('blur', syncUrlValue);
+  visUrlInput.addEventListener('change', syncUrlValue);
+
+  urlPanel.appendChild(visUrlInput);
+  urlPanel.appendChild(urlHint);
+  wrap.appendChild(urlPanel);
+
+  var htmlPanel = document.createElement('div');
+  htmlPanel.style.cssText = 'border:1px solid var(--border);border-radius:10px;padding:.85rem;background:#F8FAFC;';
+
+  var topTools = document.createElement('div');
+  topTools.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:.5rem;flex-wrap:wrap;margin-bottom:.6rem;';
+
+  var fileInput = document.createElement('input');
+  fileInput.type = 'file';
+  fileInput.accept = '.html,.htm,text/html';
+  fileInput.style.display = 'none';
+
+  var btnPickFile = document.createElement('button');
+  btnPickFile.type = 'button';
+  btnPickFile.className = 'btn btn-secondary btn-sm';
+  btnPickFile.textContent = '📂 Pilih Berkas .html dari Perangkat';
+  btnPickFile.onclick = function () { fileInput.click(); };
+
+  var fileLabel = document.createElement('span');
+  fileLabel.className = 'small muted';
+  fileLabel.textContent = 'Maksimal 1,5 MB';
+
+  topTools.appendChild(btnPickFile);
+  topTools.appendChild(fileLabel);
+  htmlPanel.appendChild(topTools);
+  htmlPanel.appendChild(fileInput);
+
+  var htmlArea = document.createElement('textarea');
+  htmlArea.id = 'in_' + prefix + '_html_code';
+  htmlArea.rows = 7;
+  htmlArea.style.cssText = 'font-family:monospace;font-size:.82rem;background:#fff;';
+  htmlArea.placeholder = 'Tempel kode <!DOCTYPE html>... lengkap di sini atau unggah berkas .html di atas...';
+  htmlPanel.appendChild(htmlArea);
+
+  var statusBox = document.createElement('div');
+  statusBox.style.cssText = 'margin-top:.5rem;font-size:.82rem;';
+  if (isInitialHtml) {
+    statusBox.innerHTML = '<span style="color:#059669;font-weight:600;">✅ Berkas HTML sudah tersimpan (' + escapeHtml(initialUrl) + ').</span> <span class="muted">Tempel kode baru di atas jika ingin menggantinya.</span>';
+  } else {
+    statusBox.innerHTML = '<span class="muted">Tempel kode HTML lalu klik <strong>Simpan Kode HTML</strong> atau langsung simpan perubahan.</span>';
+  }
+  htmlPanel.appendChild(statusBox);
+
+  var actionRow = document.createElement('div');
+  actionRow.style.cssText = 'display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.65rem;';
+
+  var btnPreviewHtml = document.createElement('button');
+  btnPreviewHtml.type = 'button';
+  btnPreviewHtml.className = 'btn btn-secondary btn-sm';
+  btnPreviewHtml.textContent = '👁️ Pratinjau HTML';
+  btnPreviewHtml.onclick = function () {
+    var code = htmlArea.value.trim();
+    if (!code) {
+      if (/^html-app:\/\//i.test(hiddenInput.value)) {
+        previewHtmlContainerByUrl_(hiddenInput.value, 'Pratinjau Aplikasi HTML', btnPreviewHtml);
+        return;
+      }
+      showToast('Tempel kode HTML atau pilih berkas .html terlebih dahulu.', 'error');
+      return;
+    }
+    openHtmlSandboxTab_(code, 'Pratinjau Aplikasi HTML');
+  };
+
+  var btnUploadHtml = document.createElement('button');
+  btnUploadHtml.type = 'button';
+  btnUploadHtml.className = 'btn btn-primary btn-sm';
+  btnUploadHtml.textContent = '☁️ Simpan Kode HTML';
+
+  var lastUploadedCode = '';
+  var lastFileName = 'aplikasi.html';
+
+  var uploadHtmlNow = function () {
+    var code = htmlArea.value.trim();
+    if (!code) {
+      if (/^html-app:\/\//i.test(hiddenInput.value)) {
+        return Promise.resolve(hiddenInput.value);
+      }
+      return Promise.reject(new Error('Kode HTML masih kosong.'));
+    }
+    if (code === lastUploadedCode && /^html-app:\/\//i.test(hiddenInput.value)) {
+      return Promise.resolve(hiddenInput.value);
+    }
+    btnUploadHtml.disabled = true;
+    btnUploadHtml.textContent = 'Menyimpan HTML...';
+    statusBox.innerHTML = '<span style="color:#2563EB;">⏳ Mengunggah berkas HTML ke penyimpanan portal...</span>';
+
+    return callApi('api_uploadHtmlApp', {
+      htmlContent: code,
+      fileName: lastFileName
+    }).then(function (res) {
+      btnUploadHtml.disabled = false;
+      btnUploadHtml.textContent = '☁️ Simpan Kode HTML';
+      lastUploadedCode = code;
+      hiddenInput.value = res.targetUrl;
+      statusBox.innerHTML = '<span style="color:#059669;font-weight:600;">✅ Kode HTML tersimpan (' + Math.round((res.sizeBytes || code.length) / 1024) + ' KB).</span>';
+      return res.targetUrl;
+    }).catch(function (err) {
+      btnUploadHtml.disabled = false;
+      btnUploadHtml.textContent = '☁️ Simpan Kode HTML';
+      statusBox.innerHTML = '<span style="color:#DC2626;">❌ ' + escapeHtml(err.message || 'Gagal menyimpan HTML.') + '</span>';
+      throw err;
+    });
+  };
+
+  btnUploadHtml.onclick = function () {
+    uploadHtmlNow().then(function () {
+      showToast('Kode HTML berhasil disimpan ke server!', 'success');
+    }).catch(function (err) {
+      showToast(err.message || 'Gagal mengunggah kode HTML.', 'error');
+    });
+  };
+
+  fileInput.onchange = function () {
+    var file = fileInput.files && fileInput.files[0];
+    if (!file) return;
+    if (file.size > 1500000) {
+      showToast('Ukuran file .html maksimal 1,5 MB.', 'error');
+      fileInput.value = '';
+      return;
+    }
+    lastFileName = file.name || 'aplikasi.html';
+    fileLabel.textContent = 'Berkas: ' + lastFileName;
+    var reader = new FileReader();
+    reader.onload = function (ev) {
+      htmlArea.value = String(ev.target.result || '');
+      uploadHtmlNow().then(function () {
+        showToast('Berkas ' + lastFileName + ' berhasil diunggah!', 'success');
+      }).catch(function () {});
+    };
+    reader.readAsText(file, 'UTF-8');
+  };
+
+  htmlArea.addEventListener('input', function () {
+    if (htmlArea.value.trim() !== lastUploadedCode && !isInitialHtml) {
+      hiddenInput.value = '';
+    }
+  });
+
+  actionRow.appendChild(btnPreviewHtml);
+  actionRow.appendChild(btnUploadHtml);
+  htmlPanel.appendChild(actionRow);
+  wrap.appendChild(htmlPanel);
+
+  var setMode = function (mode) {
+    currentMode = mode;
+    wrap.dataset.launchMode = mode;
+    if (mode === 'url') {
+      btnModeUrl.className = 'btn btn-sm btn-primary';
+      btnModeHtml.className = 'btn btn-sm btn-secondary';
+      urlPanel.style.display = 'block';
+      htmlPanel.style.display = 'none';
+      hiddenInput.value = normalizeScriptUrl(visUrlInput.value);
+    } else {
+      btnModeUrl.className = 'btn btn-sm btn-secondary';
+      btnModeHtml.className = 'btn btn-sm btn-primary';
+      urlPanel.style.display = 'none';
+      htmlPanel.style.display = 'block';
+    }
+  };
+
+  btnModeUrl.onclick = function () { setMode('url'); };
+  btnModeHtml.onclick = function () { setMode('html'); };
+  setMode(currentMode);
+
+  wrap._resolveLaunchUrl = function () {
+    if (currentMode === 'url') {
+      syncUrlValue();
+      return Promise.resolve(hiddenInput.value.trim());
+    }
+    return uploadHtmlNow();
+  };
+
+  return wrap;
+}
+
+function resolveLaunchUrlBeforeSubmit_(prefix) {
+  var wrap = document.getElementById('wrap_' + prefix + '_launch');
+  if (wrap && typeof wrap._resolveLaunchUrl === 'function') {
+    return wrap._resolveLaunchUrl();
+  }
+  var inp = document.getElementById('in_' + prefix + '_url');
+  return Promise.resolve(inp ? normalizeScriptUrl(inp.value) : '');
 }
 
 function ensureAdminCategories_() {
@@ -931,6 +1227,11 @@ function openSubmissionDetailModal(submissionId) {
     var content = document.createElement('div');
     content.style.marginTop = '1rem';
 
+    var isSubHtml = Boolean(s.isHtmlContainer || /^html-app:\/\//i.test(String(s.targetUrl || '')));
+    var urlCellHtml = isSubHtml
+      ? '<span class="code small">' + escapeHtml(s.targetUrl) + '</span> <button type="button" class="btn btn-primary btn-sm" id="btnPreviewSubHtml" style="margin-left:.4rem;min-height:28px;padding:.15rem .6rem;font-size:.78rem;">👁️ Uji Coba Aplikasi HTML</button>'
+      : '<a href="' + escapeHtml(s.targetUrl) + '" target="_blank" rel="noopener noreferrer" style="font-weight:700;">' + escapeHtml(s.targetUrl) + ' ↗</a>';
+
     var dl = document.createElement('dl');
     dl.className = 'meta';
     dl.innerHTML = '<dt>Pengembang</dt><dd>' + escapeHtml(s.creatorName) + '</dd>' +
@@ -939,10 +1240,17 @@ function openSubmissionDetailModal(submissionId) {
       '<dt>Kelas SD</dt><dd>' + escapeHtml((s.gradeLabels || []).join(', ')) + '</dd>' +
       '<dt>Mapel</dt><dd>' + escapeHtml((s.subjectLabels || []).join(', ')) + '</dd>' +
       '<dt>Jenis</dt><dd>' + escapeHtml(s.category ? s.category.label : '-') + '</dd>' +
-      '<dt>URL Aplikasi</dt><dd><a href="' + escapeHtml(s.targetUrl) + '" target="_blank" rel="noopener noreferrer" style="font-weight:700;">' + escapeHtml(s.targetUrl) + ' ↗</a></dd>' +
+      '<dt>Sumber Aplikasi</dt><dd>' + urlCellHtml + '</dd>' +
       (s.thumbnailUrl ? '<dt>URL Gambar</dt><dd><a href="' + escapeHtml(s.thumbnailUrl) + '" target="_blank" rel="noopener noreferrer">' + escapeHtml(s.thumbnailUrl) + ' ↗</a></dd>' : '') +
       '<dt>Tgl Ajukan</dt><dd>' + formatDateId(s.submittedAt) + '</dd>';
     content.appendChild(dl);
+
+    var btnPrevSubHtml = dl.querySelector('#btnPreviewSubHtml');
+    if (btnPrevSubHtml) {
+      btnPrevSubHtml.onclick = function () {
+        previewHtmlContainerByUrl_(s.targetUrl, s.title, btnPrevSubHtml);
+      };
+    }
 
     var descBox = document.createElement('div');
     descBox.style.margin = '1rem 0';
@@ -1157,8 +1465,13 @@ function loadAdminAppsData(statusFilter) {
     var tbody = document.createElement('tbody');
 
     res.items.forEach(function (app) {
+      var isAppHtml = Boolean(app.isHtmlContainer || /^html-app:\/\//i.test(String(app.targetUrl || '')));
+      var linkCell = isAppHtml
+        ? '<button type="button" class="btn-link small btn-prev-html-row" style="padding:0;">📄 ' + escapeHtml(app.slug) + ' (Pratinjau HTML ↗)</button>'
+        : '<a href="' + escapeHtml(app.targetUrl) + '" target="_blank" rel="noopener noreferrer" class="small muted">' + escapeHtml(app.slug) + ' ↗</a>';
+
       var tr = document.createElement('tr');
-      tr.innerHTML = '<td><strong>' + escapeHtml(app.title) + '</strong> ' + (app.isVerified ? '<span style="color:#027A48;font-size:.78rem;">✔ Terverifikasi</span>' : '') + '<br><a href="' + escapeHtml(app.targetUrl) + '" target="_blank" rel="noopener noreferrer" class="small muted">' + escapeHtml(app.slug) + ' ↗</a></td>' +
+      tr.innerHTML = '<td><strong>' + escapeHtml(app.title) + '</strong> ' + (app.isVerified ? '<span style="color:#027A48;font-size:.78rem;">✔ Terverifikasi</span>' : '') + '<br>' + linkCell + '</td>' +
         '<td><span class="small">' + escapeHtml((app.gradeLabels || []).join(', ')) + '</span><br><span class="muted small">' + escapeHtml((app.subjectLabels || []).join(', ')) + '</span></td>' +
         '<td>' + escapeHtml(app.creatorName) + '<br><span class="muted small">' + escapeHtml(app.schoolName || '-') + '</span></td>' +
         '<td><span class="status st-' + app.status + '">' + app.status + '</span></td>' +
@@ -1174,6 +1487,13 @@ function loadAdminAppsData(statusFilter) {
           showToast(err.message, 'error');
         });
       };
+
+      var btnPrevRow = tr.querySelector('.btn-prev-html-row');
+      if (btnPrevRow) {
+        btnPrevRow.onclick = function () {
+          previewHtmlContainerByUrl_(app.targetUrl, app.title, btnPrevRow);
+        };
+      }
 
       tr.querySelector('.btn-edit').onclick = function () {
         openEditAppModal(app.appId);
@@ -1288,11 +1608,7 @@ function openEditAppModal(appId) {
 
     form.appendChild(buildAdminTaxonomyFields_('edit_app', a.gradeIds, a.subjectIds, a.categoryId, cats));
 
-    form.appendChild(createFormField('edit_url', 'URL Aplikasi (HTTPS)', 'url', '', true));
-    var inEditUrl = form.querySelector('#in_edit_url');
-    inEditUrl.value = a.targetUrl;
-    inEditUrl.addEventListener('blur', function () { this.value = normalizeScriptUrl(this.value); });
-    inEditUrl.addEventListener('change', function () { this.value = normalizeScriptUrl(this.value); });
+    form.appendChild(createLaunchSourceField('edit', a.targetUrl, 'Sumber Aplikasi Pembelajaran', true));
 
     form.appendChild(createThumbnailUploadField('edit_thumb', 'Gambar Sampul / Tangkapan Layar', a.thumbnailUrl || ''));
 
@@ -1327,23 +1643,29 @@ function openEditAppModal(appId) {
       btnSave.disabled = true;
       btnSave.textContent = 'Menyimpan...';
 
-      var payload = {
-        appId: a.appId,
-        title: form.querySelector('#in_edit_title').value.trim(),
-        shortDescription: form.querySelector('#in_edit_short').value.trim(),
-        description: form.querySelector('#in_edit_desc').value.trim(),
-        learningObjective: form.querySelector('#in_edit_obj').value.trim(),
-        targetUrl: normalizeScriptUrl(form.querySelector('#in_edit_url').value),
-        thumbnailUrl: form.querySelector('#in_edit_thumb').value.trim(),
-        creatorName: form.querySelector('#in_edit_dev').value.trim(),
-        tags: form.querySelector('#in_edit_tags').value.trim(),
-        adminNotes: form.querySelector('#in_edit_notes').value.trim(),
-        subjectIds: subjects,
-        gradeIds: grades,
-        categoryId: catId
-      };
+      resolveLaunchUrlBeforeSubmit_('edit').then(function (resolvedUrl) {
+        if (!resolvedUrl) {
+          throw new Error('Sumber aplikasi wajib diisi.');
+        }
 
-      callApi('api_adminUpdateApp', payload).then(function () {
+        var payload = {
+          appId: a.appId,
+          title: form.querySelector('#in_edit_title').value.trim(),
+          shortDescription: form.querySelector('#in_edit_short').value.trim(),
+          description: form.querySelector('#in_edit_desc').value.trim(),
+          learningObjective: form.querySelector('#in_edit_obj').value.trim(),
+          targetUrl: resolvedUrl,
+          thumbnailUrl: form.querySelector('#in_edit_thumb').value.trim(),
+          creatorName: form.querySelector('#in_edit_dev').value.trim(),
+          tags: form.querySelector('#in_edit_tags').value.trim(),
+          adminNotes: form.querySelector('#in_edit_notes').value.trim(),
+          subjectIds: subjects,
+          gradeIds: grades,
+          categoryId: catId
+        };
+
+        return callApi('api_adminUpdateApp', payload);
+      }).then(function () {
         showToast('Perubahan aplikasi berhasil disimpan.', 'success');
         document.body.removeChild(backdrop);
         loadAdminAppsData(ADMIN_STATE.appsStatus);
@@ -1405,11 +1727,7 @@ function openEditSubmissionModal(s, onSuccess) {
 
     form.appendChild(buildAdminTaxonomyFields_('edit_sub', s.gradeIds, s.subjectIds, s.category ? s.category.id : '', cats));
 
-    form.appendChild(createFormField('sub_url', 'URL Aplikasi (Wajib HTTPS)', 'url', '', true, 'Perbaiki tautan di sini jika tautan awal dari guru bermasalah.'));
-    var inSubUrl = form.querySelector('#in_sub_url');
-    inSubUrl.value = s.targetUrl;
-    inSubUrl.addEventListener('blur', function () { this.value = normalizeScriptUrl(this.value); });
-    inSubUrl.addEventListener('change', function () { this.value = normalizeScriptUrl(this.value); });
+    form.appendChild(createLaunchSourceField('sub', s.targetUrl, 'Sumber Aplikasi Pembelajaran', true));
 
     form.appendChild(createThumbnailUploadField('sub_thumb', 'Gambar Sampul / Screenshot', s.thumbnailUrl || ''));
 
@@ -1441,31 +1759,41 @@ function openEditSubmissionModal(s, onSuccess) {
       btnSave.disabled = true;
       btnSave.textContent = 'Menyimpan...';
 
-      var payload = {
-        submissionId: s.submissionId,
-        title: form.querySelector('#in_sub_title').value.trim(),
-        shortDescription: form.querySelector('#in_sub_short').value.trim(),
-        description: form.querySelector('#in_sub_desc').value.trim(),
-        learningObjective: form.querySelector('#in_sub_obj').value.trim(),
-        targetUrl: normalizeScriptUrl(form.querySelector('#in_sub_url').value),
-        thumbnailUrl: form.querySelector('#in_sub_thumb').value.trim(),
-        creatorName: form.querySelector('#in_sub_dev').value.trim(),
-        tags: form.querySelector('#in_sub_tags').value.trim(),
-        subjectIds: subjects,
-        gradeIds: grades,
-        categoryId: catId
-      };
+      resolveLaunchUrlBeforeSubmit_('sub').then(function (resolvedUrl) {
+        if (!resolvedUrl) {
+          throw new Error('Sumber aplikasi wajib diisi.');
+        }
 
-      document.body.removeChild(backdrop);
-      showToast('Menyimpan perubahan metadata...', 'info');
+        var payload = {
+          submissionId: s.submissionId,
+          title: form.querySelector('#in_sub_title').value.trim(),
+          shortDescription: form.querySelector('#in_sub_short').value.trim(),
+          description: form.querySelector('#in_sub_desc').value.trim(),
+          learningObjective: form.querySelector('#in_sub_obj').value.trim(),
+          targetUrl: resolvedUrl,
+          thumbnailUrl: form.querySelector('#in_sub_thumb').value.trim(),
+          creatorName: form.querySelector('#in_sub_dev').value.trim(),
+          tags: form.querySelector('#in_sub_tags').value.trim(),
+          subjectIds: subjects,
+          gradeIds: grades,
+          categoryId: catId
+        };
 
-      callApi('api_adminUpdateSubmission', payload).then(function (res) {
+        document.body.removeChild(backdrop);
+        showToast('Menyimpan perubahan metadata...', 'info');
+
+        return callApi('api_adminUpdateSubmission', payload);
+      }).then(function (res) {
         showToast(res.message || 'Perubahan pengajuan berhasil disimpan!', 'success');
         if (onSuccess) onSuccess();
         else loadAdminSubmissionsData(ADMIN_STATE.submissionsStatus);
       }).catch(function (err) {
+        btnSave.disabled = false;
+        btnSave.textContent = 'Simpan Perubahan Pengajuan';
         showToast(err.message || 'Gagal menyimpan pengajuan.', 'error');
-        loadAdminSubmissionsData(ADMIN_STATE.submissionsStatus);
+        if (!document.body.contains(backdrop)) {
+          loadAdminSubmissionsData(ADMIN_STATE.submissionsStatus);
+        }
       });
     };
 
