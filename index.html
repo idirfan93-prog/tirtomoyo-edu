@@ -132,17 +132,8 @@ function normalizeScriptUrl(url) {
 }
 
 function openHtmlSandboxTab_(htmlContent, title) {
-  var safeTitle = escapeHtml(title || 'Pratinjau Aplikasi HTML');
-  var escapedDoc = String(htmlContent || '')
-    .replace(/&/g, '&')
-    .replace(/"/g, '"');
-  var wrapperHtml = '<!DOCTYPE html><html lang="id"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +
-    '<title>' + safeTitle + '</title>' +
-    '<style>html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:#0F172A;}iframe{width:100%;height:100%;border:none;display:block;}</style>' +
-    '</head><body>' +
-    '<iframe sandbox="allow-scripts allow-forms allow-modals allow-popups" srcdoc="' + escapedDoc + '"></iframe>' +
-    '</body></html>';
-  var blob = new Blob([wrapperHtml], { type: 'text/html;charset=utf-8' });
+  var rawHtml = String(htmlContent || '');
+  var blob = new Blob([rawHtml], { type: 'text/html;charset=utf-8' });
   var blobUrl = URL.createObjectURL(blob);
   window.open(blobUrl, '_blank', 'noopener,noreferrer');
   setTimeout(function () {
@@ -1699,18 +1690,95 @@ function renderPlayPage(container, slugOrId) {
     iframe.style.cssText = 'width:100%;height:100%;border:none;display:block;';
     iframe.onload = hideLoader;
 
+    var sandboxStorageKey = 'eduapps_sandbox_data_' + String(app.appId || app.slug || 'default');
+
+    var readSandboxBucket = function () {
+      try {
+        var raw = localStorage.getItem(sandboxStorageKey);
+        var parsed = raw ? JSON.parse(raw) : {};
+        return (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) ? parsed : {};
+      } catch (e) {
+        return {};
+      }
+    };
+
+    var writeSandboxBucket = function (bucket) {
+      try {
+        localStorage.setItem(sandboxStorageKey, JSON.stringify(bucket));
+      } catch (e) {}
+    };
+
+    var onSandboxStorageMessage = function (event) {
+      if (!iframe.contentWindow || event.source !== iframe.contentWindow) return;
+      var msg = event.data;
+      if (!msg || msg.type !== 'EDUAPPS_SANDBOX_STORAGE') return;
+
+      var bucket = readSandboxBucket();
+      if (msg.op === 'set' && typeof msg.key === 'string') {
+        bucket[msg.key] = String(msg.value === undefined || msg.value === null ? '' : msg.value);
+        writeSandboxBucket(bucket);
+      } else if (msg.op === 'remove' && typeof msg.key === 'string') {
+        delete bucket[msg.key];
+        writeSandboxBucket(bucket);
+      } else if (msg.op === 'clear') {
+        writeSandboxBucket({});
+      }
+    };
+
+    if (window._eduappsSandboxMsgHandler) {
+      window.removeEventListener('message', window._eduappsSandboxMsgHandler);
+    }
+    if (isHtmlApp) {
+      window._eduappsSandboxMsgHandler = onSandboxStorageMessage;
+      window.addEventListener('message', onSandboxStorageMessage);
+    }
+
+    var injectSandboxStorageBridge = function (htmlCode) {
+      var initialDataJson = JSON.stringify(readSandboxBucket()).replace(/<\//g, '<\\/');
+      var bridgeScript = '<script>(function(){' +
+        'var mem=' + initialDataJson + ';' +
+        'function sync(op,k,v){try{window.parent.postMessage({type:"EDUAPPS_SANDBOX_STORAGE",op:op,key:k,value:v},"*");}catch(e){}}' +
+        'var proxyStorage={' +
+          'getItem:function(k){return Object.prototype.hasOwnProperty.call(mem,k)?mem[k]:null;},' +
+          'setItem:function(k,v){mem[String(k)]=String(v);sync("set",String(k),String(v));},' +
+          'removeItem:function(k){delete mem[String(k)];sync("remove",String(k));},' +
+          'clear:function(){mem={};sync("clear");},' +
+          'key:function(i){var ks=Object.keys(mem);return ks[i]||null;},' +
+          'get length(){return Object.keys(mem).length;}' +
+        '};' +
+        'try{Object.defineProperty(window,"localStorage",{value:proxyStorage,configurable:true});}catch(e){}' +
+      '})();<\/script>';
+
+      var src = String(htmlCode || '');
+      if (/<head[^>]*>/i.test(src)) {
+        return src.replace(/<head[^>]*>/i, function (match) { return match + bridgeScript; });
+      }
+      return bridgeScript + src;
+    };
+
+    var renderSrcdocFresh = function (htmlCode) {
+      var preparedHtml = injectSandboxStorageBridge(htmlCode);
+      iframe.removeAttribute('srcdoc');
+      requestAnimationFrame(function () {
+        iframe.srcdoc = preparedHtml;
+      });
+    };
+
     var loadHtmlContainer = function (forceRefresh) {
       if (!forceRefresh && cachedHtmlSource) {
-        iframe.srcdoc = cachedHtmlSource;
-        hideLoader();
+        renderSrcdocFresh(cachedHtmlSource);
         return;
       }
       callApi('api_getHtmlAppContent', { targetUrl: app.targetUrl }).then(function (res) {
         cachedHtmlSource = res.htmlContent || '';
-        iframe.srcdoc = cachedHtmlSource;
+        renderSrcdocFresh(cachedHtmlSource);
       }).catch(function (err) {
         hideLoader();
-        frameWrap.innerHTML = '<div class="state error" style="margin:2rem auto;max-width:480px;"><p>' + escapeHtml(err.message || 'Gagal memuat aplikasi HTML.') + '</p></div>';
+        if (!cachedHtmlSource) {
+          frameWrap.innerHTML = '<div class="state error" style="margin:2rem auto;max-width:480px;"><p>' + escapeHtml(err.message || 'Gagal memuat aplikasi HTML.') + '</p></div>';
+        } else {
+          showToast(err.message || 'Gagal memuat ulang dari server.', 'error');
+        }
       });
     };
 
@@ -1732,8 +1800,7 @@ function renderPlayPage(container, slugOrId) {
       trackPlay(app.appId, app.slug, true);
 
       if (isHtmlApp) {
-        iframe.srcdoc = '';
-        setTimeout(function () { loadHtmlContainer(true); }, 60);
+        loadHtmlContainer(!cachedHtmlSource);
         return;
       }
 
