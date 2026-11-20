@@ -6,6 +6,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="Portal etalase dan peluncur aplikasi pembelajaran SD karya guru di Kecamatan Tirtomoyo.">
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cdefs%3E%3ClinearGradient id='grad' x1='0%25' y1='0%25' x2='100%25' y2='100%25'%3E%3Cstop offset='0%25' stop-color='%2317365D'/%3E%3Cstop offset='100%25' stop-color='%231769E0'/%3E%3C/defs%3E%3Crect x='4' y='4' width='56' height='56' rx='16' fill='url(%23grad)'/%3E%3Ctext x='32' y='42' font-family='sans-serif' font-size='34' font-weight='800' fill='%23ffffff' text-anchor='middle'%3ET%3C/text%3E%3Ccircle cx='52' cy='12' r='7' fill='%23E53935' stroke='%23ffffff' stroke-width='2.5'/%3E%3C/svg%3E">
+    <link rel="preconnect" href="https://lh3.googleusercontent.com" crossorigin>
+    <link rel="preconnect" href="https://blogger.googleusercontent.com" crossorigin>
+    <link rel="preload" as="image" href="https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEjZ1Gvl2imbZlmQk0FIYYq6LLNtR_UI3MS3Jj1t52YNZLBcvJHACB-H-CipMRjulH1qOMN2M-OYaIlQzM3H_-ORl67PFBjk5M-ObxjgLXMfEv5BOWYi1yseMEO7ByGCOm3ZplNn0zFCS70pIudXH9xvSGFFk5Re8w2rAeewCgeUY4CftmDfYV0r9A5Fre8/w640-rw/Cheerful%20E-Learning%20Classroom%20Team.png" fetchpriority="high">
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -129,6 +132,21 @@ function normalizeScriptUrl(url) {
     s = iframeMatch[1].trim();
   }
   return s.replace(/^https?:\/\/script\.google\.com\/(?:[^?#]*\/)?macros\/(?:[^\/]+\/)?s\//i, 'https://script.google.com/a/~/macros/s/');
+}
+
+function getOptimizedThumbUrl(url, width) {
+  var s = String(url || '').trim();
+  if (!s) return '';
+  var w = width || 560;
+  var driveMatch = s.match(/^https?:\/\/drive\.google\.com\/(?:thumbnail\?[^#]*\bid=|open\?[^#]*\bid=|uc\?[^#]*\bid=|file\/d\/)([a-zA-Z0-9_-]{10,})/i);
+  if (driveMatch && driveMatch[1]) {
+    return 'https://lh3.googleusercontent.com/d/' + driveMatch[1] + '=w' + w;
+  }
+  var lh3Match = s.match(/^(https?:\/\/lh3\.googleusercontent\.com\/d\/[a-zA-Z0-9_-]{10,})(?:=[^/?#]*)?$/i);
+  if (lh3Match && lh3Match[1]) {
+    return lh3Match[1] + '=w' + w;
+  }
+  return s;
 }
 
 function openHtmlSandboxTab_(htmlContent, title) {
@@ -887,7 +905,7 @@ function buildHomePageDOM_(container, data) {
     var colRight = document.createElement('div');
     colRight.className = 'hero-visual';
     colRight.innerHTML = '<div class="hero-image-wrap">' +
-      '<img src="https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEjZ1Gvl2imbZlmQk0FIYYq6LLNtR_UI3MS3Jj1t52YNZLBcvJHACB-H-CipMRjulH1qOMN2M-OYaIlQzM3H_-ORl67PFBjk5M-ObxjgLXMfEv5BOWYi1yseMEO7ByGCOm3ZplNn0zFCS70pIudXH9xvSGFFk5Re8w2rAeewCgeUY4CftmDfYV0r9A5Fre8/s1600/Cheerful%20E-Learning%20Classroom%20Team.png" alt="Cheerful E-Learning Classroom Team">' +
+      '<img src="https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEjZ1Gvl2imbZlmQk0FIYYq6LLNtR_UI3MS3Jj1t52YNZLBcvJHACB-H-CipMRjulH1qOMN2M-OYaIlQzM3H_-ORl67PFBjk5M-ObxjgLXMfEv5BOWYi1yseMEO7ByGCOm3ZplNn0zFCS70pIudXH9xvSGFFk5Re8w2rAeewCgeUY4CftmDfYV0r9A5Fre8/w640-rw/Cheerful%20E-Learning%20Classroom%20Team.png" alt="Cheerful E-Learning Classroom Team" width="640" height="480" fetchpriority="high" decoding="async">' +
       '<div class="floating-badge badge-media">🖥️ Media Interaktif</div>' +
       '<div class="floating-badge badge-quiz">🎯 Kuis & Latihan Soal</div>' +
       '<div class="floating-badge badge-lkpd">📋 LKPD Digital</div>' +
@@ -968,13 +986,14 @@ function buildHomePageDOM_(container, data) {
 
       var picksList = (data.dailyPicks.length >= 2) ? data.dailyPicks.concat(data.dailyPicks) : data.dailyPicks;
 
-      picksList.forEach(function (app) {
+      picksList.forEach(function (app, idx) {
         var dCard = document.createElement('div');
         dCard.className = 'daily-card';
+        var optThumb = getOptimizedThumbUrl(app.thumbnailUrl, 480);
 
         var thumb = '<div class="d-thumb">' +
-          (app.thumbnailUrl
-            ? '<img src="' + escapeHtml(app.thumbnailUrl) + '" alt="' + escapeHtml(app.title) + '" loading="lazy">'
+          (optThumb
+            ? '<img src="' + escapeHtml(optThumb) + '" alt="' + escapeHtml(app.title) + '"' + (idx >= 3 ? ' loading="lazy"' : '') + ' decoding="async">'
             : '<div class="placeholder" style="font-size:.85rem;padding:.5rem;">' + escapeHtml(app.title) + '</div>') +
           '</div>';
 
@@ -990,6 +1009,10 @@ function buildHomePageDOM_(container, data) {
         var dImg = dCard.querySelector('.d-thumb img');
         if (dImg) {
           dImg.onerror = function () {
+            if (app.thumbnailUrl && dImg.src !== app.thumbnailUrl) {
+              dImg.src = app.thumbnailUrl;
+              return;
+            }
             var thumbWrap = dCard.querySelector('.d-thumb');
             if (thumbWrap) {
               thumbWrap.innerHTML = '<div class="placeholder" style="font-size:.85rem;padding:.5rem;">' + escapeHtml(app.title) + '</div>';
@@ -1054,8 +1077,8 @@ function buildHomePageDOM_(container, data) {
 
       var gridFeat = document.createElement('div');
       gridFeat.className = 'grid';
-      data.featured.forEach(function (app) {
-        gridFeat.appendChild(createAppCard(app));
+      data.featured.forEach(function (app, idx) {
+        gridFeat.appendChild(createAppCard(app, idx + 3));
       });
       featSec.appendChild(gridFeat);
       mainContainer.appendChild(featSec);
@@ -1073,8 +1096,8 @@ function buildHomePageDOM_(container, data) {
     if (data.latest && data.latest.length > 0) {
       var gridLat = document.createElement('div');
       gridLat.className = 'grid';
-      data.latest.forEach(function (app) {
-        gridLat.appendChild(createAppCard(app));
+      data.latest.forEach(function (app, idx) {
+        gridLat.appendChild(createAppCard(app, idx + 6));
       });
       latSec.appendChild(gridLat);
     } else {
@@ -1313,8 +1336,8 @@ function executeCatalogSearch() {
       return;
     }
 
-    res.items.forEach(function (app) {
-      grid.appendChild(createAppCard(app));
+    res.items.forEach(function (app, idx) {
+      grid.appendChild(createAppCard(app, idx));
     });
 
     if (res.pagination.totalPages > 1 && pager) {
@@ -1383,9 +1406,15 @@ function renderDetailPage(container, slugOrId) {
 
     if (app.thumbnailUrl) {
       var img = document.createElement('img');
-      img.src = app.thumbnailUrl;
+      img.src = getOptimizedThumbUrl(app.thumbnailUrl, 900);
       img.alt = app.title;
+      img.fetchPriority = 'high';
+      img.decoding = 'async';
       img.onerror = function () {
+        if (app.thumbnailUrl && img.src !== app.thumbnailUrl) {
+          img.src = app.thumbnailUrl;
+          return;
+        }
         thumbBox.innerHTML = '';
         thumbBox.appendChild(createPlaceholderThumb(app.title, app.category ? app.category.label : ''));
       };
@@ -1897,7 +1926,7 @@ function renderNotFound(container) {
   container.innerHTML = '<div class="container" style="padding:3rem 1rem;text-align:center;"><div class="state"><h2>Halaman Tidak Ditemukan (404)</h2><p class="muted">Halaman yang Anda tuju tidak tersedia.</p><a href="#/" class="btn btn-primary btn-sm">Kembali ke Beranda</a></div></div>';
 }
 
-function createAppCard(app) {
+function createAppCard(app, index) {
   var card = document.createElement('div');
   card.className = 'card app-card';
 
@@ -1906,10 +1935,19 @@ function createAppCard(app) {
 
   if (app.thumbnailUrl) {
     var img = document.createElement('img');
-    img.src = app.thumbnailUrl;
+    img.src = getOptimizedThumbUrl(app.thumbnailUrl, 560);
     img.alt = app.title;
-    img.loading = 'lazy';
+    img.decoding = 'async';
+    if (typeof index === 'number' && index < 6) {
+      img.fetchPriority = 'high';
+    } else {
+      img.loading = 'lazy';
+    }
     img.onerror = function () {
+      if (app.thumbnailUrl && img.src !== app.thumbnailUrl) {
+        img.src = app.thumbnailUrl;
+        return;
+      }
       thumb.innerHTML = '';
       thumb.appendChild(createPlaceholderThumb(app.title, app.category ? app.category.label : ''));
     };
