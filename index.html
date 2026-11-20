@@ -677,6 +677,7 @@ var PUBLIC_STATE = {
   categories: null,
   homeData: null,
   currentApp: null,
+  catalogCache: {},
   catalogPage: 1,
   catalogPageSize: 12,
   catalogFilters: {
@@ -814,11 +815,26 @@ function renderHomePage(container) {
 
   callApi('api_getHomeData').then(function (data) {
     data._cachedHour = currentHourTag;
+    var prevJson = '';
+    var nextJson = '';
+    try {
+      if (PUBLIC_STATE.homeData) {
+        var prevCopy = Object.assign({}, PUBLIC_STATE.homeData);
+        delete prevCopy._cachedHour;
+        prevJson = JSON.stringify(prevCopy);
+      }
+      var nextCopy = Object.assign({}, data);
+      delete nextCopy._cachedHour;
+      nextJson = JSON.stringify(nextCopy);
+    } catch (e) {}
+
     var wasRendered = isSameHourCache;
     PUBLIC_STATE.homeData = data;
     try {
       localStorage.setItem('eduapps_pub_homedata', JSON.stringify(data));
     } catch (e) {}
+
+    if (wasRendered && prevJson && prevJson === nextJson) return;
 
     var hash = window.location.hash || '#/';
     if (hash === '#/' || hash === '') {
@@ -958,7 +974,7 @@ function buildHomePageDOM_(container, data) {
         '</div>';
 
       mainContainer.appendChild(statsWrap);
-      initMobileStatsSlider();
+      requestAnimationFrame(initMobileStatsSlider);
     }
 
     if (data.dailyPicks && data.dailyPicks.length > 0) {
@@ -1024,7 +1040,7 @@ function buildHomePageDOM_(container, data) {
 
       dailySec.appendChild(scrollWrap);
       mainContainer.appendChild(dailySec);
-      initDailyPicksCarousel();
+      requestAnimationFrame(initDailyPicksCarousel);
     }
 
     if (data.subjects && data.subjects.length > 0) {
@@ -1058,7 +1074,7 @@ function buildHomePageDOM_(container, data) {
       });
       catSec.appendChild(chips);
       mainContainer.appendChild(catSec);
-      initSubjectChipsSlider();
+      requestAnimationFrame(initSubjectChipsSlider);
     }
 
     if (data.featured && data.featured.length > 0) {
@@ -1306,17 +1322,66 @@ function buildCatalogUI(container) {
   container.appendChild(root);
 }
 
+function renderCatalogResults_(res, grid, info, pager) {
+  grid.style.opacity = '1';
+  grid.innerHTML = '';
+  if (pager) pager.innerHTML = '';
+
+  var total = res.pagination.totalItems;
+  if (info) {
+    info.textContent = total > 0 ? 'Menampilkan ' + res.items.length + ' dari ' + total + ' aplikasi' : 'Tidak ada hasil';
+  }
+
+  if (!res.items || res.items.length === 0) {
+    grid.innerHTML = '<div class="state" style="grid-column:1/-1;"><h3>Aplikasi Tidak Ditemukan</h3><p class="muted">Coba ubah kata kunci pencarian atau bersihkan filter.</p></div>';
+    return;
+  }
+
+  var frag = document.createDocumentFragment();
+  res.items.forEach(function (app, idx) {
+    frag.appendChild(createAppCard(app, idx));
+  });
+  grid.appendChild(frag);
+
+  if (res.pagination.totalPages > 1 && pager) {
+    if (res.pagination.page > 1) {
+      var prevBtn = document.createElement('button');
+      prevBtn.className = 'btn btn-secondary btn-sm';
+      prevBtn.textContent = '← Sebelumnya';
+      prevBtn.onclick = function () {
+        PUBLIC_STATE.catalogPage--;
+        executeCatalogSearch();
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      };
+      pager.appendChild(prevBtn);
+    }
+
+    var pageNum = document.createElement('span');
+    pageNum.className = 'small muted';
+    pageNum.textContent = 'Halaman ' + res.pagination.page + ' dari ' + res.pagination.totalPages;
+    pager.appendChild(pageNum);
+
+    if (res.pagination.page < res.pagination.totalPages) {
+      var nextBtn = document.createElement('button');
+      nextBtn.className = 'btn btn-secondary btn-sm';
+      nextBtn.textContent = 'Berikutnya →';
+      nextBtn.onclick = function () {
+        PUBLIC_STATE.catalogPage++;
+        executeCatalogSearch();
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      };
+      pager.appendChild(nextBtn);
+    }
+  }
+}
+
 function executeCatalogSearch() {
   var grid = document.getElementById('catalogGrid');
   var info = document.getElementById('catalogResultInfo');
   var pager = document.getElementById('catalogPager');
   if (!grid) return;
 
-  grid.innerHTML = '<div class="skeleton" style="grid-column:1/-1;height:240px;"></div>';
-  if (info) info.textContent = 'Mencari data...';
-  if (pager) pager.innerHTML = '';
-
-  callApi('api_listPublicApps', {
+  var reqPayload = {
     page: PUBLIC_STATE.catalogPage,
     pageSize: PUBLIC_STATE.catalogPageSize,
     query: PUBLIC_STATE.catalogFilters.query,
@@ -1324,53 +1389,31 @@ function executeCatalogSearch() {
     subjectIds: PUBLIC_STATE.catalogFilters.subjectIds,
     categoryIds: PUBLIC_STATE.catalogFilters.categoryIds,
     sort: PUBLIC_STATE.catalogFilters.sort
-  }).then(function (res) {
-    grid.innerHTML = '';
-    var total = res.pagination.totalItems;
-    if (info) {
-      info.textContent = total > 0 ? 'Menampilkan ' + res.items.length + ' dari ' + total + ' aplikasi' : 'Tidak ada hasil';
-    }
+  };
+  var cacheKey = JSON.stringify(reqPayload);
+  var cachedEntry = PUBLIC_STATE.catalogCache[cacheKey];
+  var isFreshCache = cachedEntry && (Date.now() - cachedEntry.ts < 120000);
 
-    if (!res.items || res.items.length === 0) {
-      grid.innerHTML = '<div class="state" style="grid-column:1/-1;"><h3>Aplikasi Tidak Ditemukan</h3><p class="muted">Coba ubah kata kunci pencarian atau bersihkan filter.</p></div>';
-      return;
-    }
+  if (isFreshCache) {
+    renderCatalogResults_(cachedEntry.data, grid, info, pager);
+    return;
+  }
 
-    res.items.forEach(function (app, idx) {
-      grid.appendChild(createAppCard(app, idx));
-    });
+  if (!grid.children.length) {
+    grid.innerHTML = '<div class="skeleton" style="grid-column:1/-1;height:240px;"></div>';
+  } else {
+    grid.style.opacity = '0.55';
+  }
+  if (info) info.textContent = 'Memfilter katalog...';
 
-    if (res.pagination.totalPages > 1 && pager) {
-      if (res.pagination.page > 1) {
-        var prevBtn = document.createElement('button');
-        prevBtn.className = 'btn btn-secondary btn-sm';
-        prevBtn.textContent = '← Sebelumnya';
-        prevBtn.onclick = function () {
-          PUBLIC_STATE.catalogPage--;
-          executeCatalogSearch();
-          window.scrollTo({ top: 0, behavior: 'smooth' });
-        };
-        pager.appendChild(prevBtn);
-      }
-
-      var pageNum = document.createElement('span');
-      pageNum.className = 'small muted';
-      pageNum.textContent = 'Halaman ' + res.pagination.page + ' dari ' + res.pagination.totalPages;
-      pager.appendChild(pageNum);
-
-      if (res.pagination.page < res.pagination.totalPages) {
-        var nextBtn = document.createElement('button');
-        nextBtn.className = 'btn btn-secondary btn-sm';
-        nextBtn.textContent = 'Berikutnya →';
-        nextBtn.onclick = function () {
-          PUBLIC_STATE.catalogPage++;
-          executeCatalogSearch();
-          window.scrollTo({ top: 0, behavior: 'smooth' });
-        };
-        pager.appendChild(nextBtn);
-      }
+  callApi('api_listPublicApps', reqPayload).then(function (res) {
+    PUBLIC_STATE.catalogCache[cacheKey] = { data: res, ts: Date.now() };
+    var currentGrid = document.getElementById('catalogGrid');
+    if (currentGrid) {
+      renderCatalogResults_(res, currentGrid, document.getElementById('catalogResultInfo'), document.getElementById('catalogPager'));
     }
   }).catch(function (err) {
+    grid.style.opacity = '1';
     grid.innerHTML = '<div class="state error" style="grid-column:1/-1;"><h3>Gagal Memuat Katalog</h3><p>' + escapeHtml(err.message) + '</p></div>';
   });
 }
