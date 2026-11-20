@@ -1813,15 +1813,46 @@ function renderPlayPage(container, slugOrId) {
       iframe.src = basePart + sep + '_r=' + Date.now() + hashPart;
     };
 
+    var btnExitFsFloat = document.createElement('button');
+    btnExitFsFloat.type = 'button';
+    btnExitFsFloat.title = 'Keluar Layar Penuh';
+    btnExitFsFloat.setAttribute('aria-label', 'Keluar Layar Penuh');
+    btnExitFsFloat.innerHTML = '✕';
+    btnExitFsFloat.style.cssText = 'position:absolute;top:10px;right:10px;z-index:20;display:none;align-items:center;justify-content:center;width:36px;height:36px;background:rgba(15,23,42,.65);color:#fff;border:1px solid rgba(255,255,255,.35);border-radius:50%;padding:0;font-size:1rem;font-weight:700;line-height:1;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,.35);';
+
+    var exitFullscreenSafe = function () {
+      if (document.exitFullscreen) document.exitFullscreen();
+      else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
+    };
+
+    btnExitFsFloat.onclick = exitFullscreenSafe;
+
     btnFull.onclick = function () {
-      if (!document.fullscreenElement) {
+      var fsEl = document.fullscreenElement || document.webkitFullscreenElement;
+      if (!fsEl) {
         if (frameWrap.requestFullscreen) frameWrap.requestFullscreen();
         else if (frameWrap.webkitRequestFullscreen) frameWrap.webkitRequestFullscreen();
       } else {
-        if (document.exitFullscreen) document.exitFullscreen();
+        exitFullscreenSafe();
       }
     };
 
+    var syncFullscreenUi = function () {
+      var fsEl = document.fullscreenElement || document.webkitFullscreenElement;
+      var isActive = Boolean(fsEl);
+      btnFull.innerHTML = isActive ? '✕ Keluar Penuh' : '⛶ Layar Penuh';
+      btnExitFsFloat.style.display = (fsEl === frameWrap) ? 'inline-flex' : 'none';
+    };
+
+    if (window._eduappsFsChangeHandler) {
+      document.removeEventListener('fullscreenchange', window._eduappsFsChangeHandler);
+      document.removeEventListener('webkitfullscreenchange', window._eduappsFsChangeHandler);
+    }
+    window._eduappsFsChangeHandler = syncFullscreenUi;
+    document.addEventListener('fullscreenchange', syncFullscreenUi);
+    document.addEventListener('webkitfullscreenchange', syncFullscreenUi);
+
+    frameWrap.appendChild(btnExitFsFloat);
     frameWrap.appendChild(frameLoader);
     frameWrap.appendChild(iframe);
     container.appendChild(frameWrap);
