@@ -29,6 +29,9 @@
         <button data-tab="apps" onclick="switchAdminTab('apps')">
           <span>📱 Katalog Aplikasi</span>
         </button>
+        <button data-tab="statistics" onclick="switchAdminTab('statistics')">
+          <span>📈 Statistik</span>
+        </button>
         <button data-tab="audit" onclick="switchAdminTab('audit')">
           <span>📜 Audit Log</span>
         </button>
@@ -993,6 +996,7 @@ function switchAdminTab(tabName) {
   if (tabName === 'dashboard') renderAdminDashboard(container);
   else if (tabName === 'submissions') renderAdminSubmissions(container);
   else if (tabName === 'apps') renderAdminApps(container);
+  else if (tabName === 'statistics') renderAdminStatistics(container);
   else if (tabName === 'audit') renderAdminAudit(container);
   else if (tabName === 'manage_admins') renderAdminManageAdmins(container);
 }
@@ -1996,6 +2000,320 @@ function openAdminUserModal(adm, onSaved) {
   modal.appendChild(form);
   backdrop.appendChild(modal);
   document.body.appendChild(backdrop);
+}
+
+/* ==========================================================================
+   7B. HALAMAN STATISTIK & ANALITIK PORTAL
+   ========================================================================== */
+
+function renderAdminStatistics(container) {
+  container.innerHTML = '<div style="padding:2.5rem 1rem;text-align:center;"><div class="spinner"></div><p class="muted">Menghitung statistik pemutaran, mapel populer, sekolah, dan guru...</p></div>';
+
+  callApi('api_adminGetStatistics').then(function (stats) {
+    var ov = stats.overview || {};
+    var subjectSortMode = 'plays';
+
+    container.innerHTML = '';
+
+    var headerRow = document.createElement('div');
+    headerRow.style.cssText = 'display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:1rem;margin-bottom:1.25rem;';
+    headerRow.innerHTML = '<div>' +
+      '<h2>Statistik & Analitik Tirtomoyo EduApps</h2>' +
+      '<p class="muted" style="margin:0;">Pemantauan pemutaran siswa, popularitas mata pelajaran, partisipasi sekolah, dan produktivitas guru.</p>' +
+      '</div>' +
+      '<div style="display:flex;gap:.5rem;flex-wrap:wrap;">' +
+      '<button type="button" class="btn btn-secondary btn-sm" id="btnRefreshStats">↻ Muat Ulang</button>' +
+      '<button type="button" class="btn btn-primary btn-sm" id="btnExportStatsCsv">📥 Ekspor Laporan CSV</button>' +
+      '</div>';
+    container.appendChild(headerRow);
+
+    headerRow.querySelector('#btnRefreshStats').onclick = function () {
+      renderAdminStatistics(container);
+    };
+    headerRow.querySelector('#btnExportStatsCsv').onclick = function () {
+      exportAdminStatisticsCsv_(stats);
+    };
+
+    var kpiGrid = document.createElement('div');
+    kpiGrid.className = 'stats';
+    kpiGrid.innerHTML =
+      '<div class="stat">' +
+        '<div class="num" style="color:var(--blue);">' + (ov.totalPlays || 0).toLocaleString('id-ID') + 'x</div>' +
+        '<div class="lbl">Total Pemutaran Aplikasi</div>' +
+        '<div class="small muted" style="margin-top:.25rem;">Rata-rata <strong>' + (ov.avgPlaysPerApp || 0) + 'x</strong> per aplikasi</div>' +
+      '</div>' +
+      '<div class="stat">' +
+        '<div class="num" style="color:var(--success);">' + (ov.totalPublishedApps || 0) + '</div>' +
+        '<div class="lbl">Aplikasi Aktif Terbit</div>' +
+        '<div class="small muted" style="margin-top:.25rem;"><strong>' + (ov.verifiedCount || 0) + '</strong> terverifikasi • <strong>' + (ov.unverifiedCount || 0) + '</strong> belum</div>' +
+      '</div>' +
+      '<div class="stat">' +
+        '<div class="num" style="color:var(--navy);">' + (ov.contributingSchoolsCount || 0) + ' / ' + (ov.totalRegisteredSchools || 0) + '</div>' +
+        '<div class="lbl">SD Berkontribusi</div>' +
+        '<div class="small muted" style="margin-top:.25rem;"><strong>' + (ov.contributingTeachersCount || 0) + '</strong> guru pengembang aktif</div>' +
+      '</div>' +
+      '<div class="stat">' +
+        '<div class="num" style="color:#B54708;">' + (ov.playedAppsCount || 0) + ' / ' + (ov.totalPublishedApps || 0) + '</div>' +
+        '<div class="lbl">Aplikasi Sudah Dimainkan</div>' +
+        '<div class="small muted" style="margin-top:.25rem;"><strong>' + (ov.unplayedAppsCount || 0) + '</strong> belum dimainkan • <strong>' + (ov.htmlContainerCount || 0) + '</strong> HTML / <strong>' + (ov.webUrlCount || 0) + '</strong> Web</div>' +
+      '</div>';
+    container.appendChild(kpiGrid);
+
+    var buildBarListHtml = function (items, valueKey, secondaryKey, primarySuffix, secondarySuffix, emptyBadgeText) {
+      if (!items || !items.length) {
+        return '<div class="state"><p class="muted">Belum ada data statistik.</p></div>';
+      }
+      var maxVal = Math.max.apply(null, items.map(function (it) { return Number(it[valueKey] || 0); }).concat([1]));
+      return items.map(function (it) {
+        var primaryVal = Number(it[valueKey] || 0);
+        var secondaryVal = Number(it[secondaryKey] || 0);
+        var pct = Math.round((primaryVal / maxVal) * 100);
+        var isZero = primaryVal === 0 && secondaryVal === 0;
+        return '<div style="margin-bottom:.75rem;">' +
+          '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:.5rem;font-size:.88rem;margin-bottom:.25rem;">' +
+            '<span style="font-weight:600;color:var(--text);">' + escapeHtml(it.label) +
+              (isZero && emptyBadgeText ? ' <span style="font-size:.72rem;background:#FEF3F2;color:var(--danger);border:1px solid #FECDCA;padding:.05rem .45rem;border-radius:999px;font-weight:600;">' + escapeHtml(emptyBadgeText) + '</span>' : '') +
+            '</span>' +
+            '<span class="small muted" style="white-space:nowrap;"><strong>' + primaryVal.toLocaleString('id-ID') + primarySuffix + '</strong> (' + secondaryVal.toLocaleString('id-ID') + secondarySuffix + ')</span>' +
+          '</div>' +
+          '<div style="height:8px;background:#EEF2F6;border-radius:999px;overflow:hidden;">' +
+            '<div style="height:100%;width:' + pct + '%;background:' + (isZero ? '#E4E7EC' : 'linear-gradient(90deg, var(--navy), var(--blue))') + ';border-radius:999px;transition:width .3s;"></div>' +
+          '</div>' +
+        '</div>';
+      }).join('');
+    };
+
+    var rowTop = document.createElement('div');
+    rowTop.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fit, minmax(340px, 1fr));gap:1.25rem;margin-bottom:1.25rem;align-items:start;';
+
+    var panelSubject = document.createElement('div');
+    panelSubject.className = 'panel';
+    panelSubject.innerHTML =
+      '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.5rem;margin-bottom:.85rem;">' +
+        '<div>' +
+          '<h3 style="margin:0;">📚 Mata Pelajaran Populer & Celah Mapel</h3>' +
+          '<p class="small muted" style="margin:.15rem 0 0;">Urutan popularitas mapel berdasarkan pemutaran atau jumlah karya.</p>' +
+        '</div>' +
+        '<div style="display:flex;gap:.35rem;">' +
+          '<button type="button" class="btn btn-sm btn-primary" id="btnSortSubPlays" style="min-height:30px;padding:.2rem .6rem;font-size:.78rem;">▶ Terbanyak Dimainkan</button>' +
+          '<button type="button" class="btn btn-sm btn-secondary" id="btnSortSubApps" style="min-height:30px;padding:.2rem .6rem;font-size:.78rem;">📦 Terbanyak Karya</button>' +
+        '</div>' +
+      '</div>' +
+      '<div id="subjectStatsBody"></div>';
+
+    var renderSubjectChart = function () {
+      var list = (stats.subjectStats || []).slice();
+      if (subjectSortMode === 'plays') {
+        list.sort(function (a, b) { return (b.totalPlays - a.totalPlays) || (b.appCount - a.appCount); });
+        panelSubject.querySelector('#subjectStatsBody').innerHTML = buildBarListHtml(list, 'totalPlays', 'appCount', 'x main', ' aplikasi', 'Belum ada karya');
+      } else {
+        list.sort(function (a, b) { return (b.appCount - a.appCount) || (b.totalPlays - a.totalPlays); });
+        panelSubject.querySelector('#subjectStatsBody').innerHTML = buildBarListHtml(list, 'appCount', 'totalPlays', ' aplikasi', 'x main', 'Belum ada karya');
+      }
+    };
+
+    panelSubject.querySelector('#btnSortSubPlays').onclick = function () {
+      subjectSortMode = 'plays';
+      panelSubject.querySelector('#btnSortSubPlays').className = 'btn btn-sm btn-primary';
+      panelSubject.querySelector('#btnSortSubApps').className = 'btn btn-sm btn-secondary';
+      renderSubjectChart();
+    };
+    panelSubject.querySelector('#btnSortSubApps').onclick = function () {
+      subjectSortMode = 'apps';
+      panelSubject.querySelector('#btnSortSubApps').className = 'btn btn-sm btn-primary';
+      panelSubject.querySelector('#btnSortSubPlays').className = 'btn btn-sm btn-secondary';
+      renderSubjectChart();
+    };
+    renderSubjectChart();
+
+    var panelGradeAndType = document.createElement('div');
+    panelGradeAndType.style.cssText = 'display:flex;flex-direction:column;gap:1.25rem;';
+
+    var panelGrade = document.createElement('div');
+    panelGrade.className = 'panel';
+    panelGrade.innerHTML = '<h3 style="margin:0 0 .2rem;">🎒 Sebaran Jenjang Kelas (SD 1–6)</h3>' +
+      '<p class="small muted" style="margin:0 0 .85rem;">Jumlah aplikasi dan total pemutaran pada tiap kelas.</p>' +
+      buildBarListHtml(stats.gradeStats || [], 'appCount', 'totalPlays', ' aplikasi', 'x main', 'Kosong');
+
+    var panelType = document.createElement('div');
+    panelType.className = 'panel';
+    panelType.style.marginTop = '0';
+    panelType.innerHTML = '<h3 style="margin:0 0 .2rem;">🎮 Jenis Media Pembelajaran</h3>' +
+      '<p class="small muted" style="margin:0 0 .85rem;">Distribusi format aplikasi pembelajaran yang dikembangkan guru.</p>' +
+      buildBarListHtml(stats.typeStats || [], 'appCount', 'totalPlays', ' aplikasi', 'x main', '');
+
+    panelGradeAndType.appendChild(panelGrade);
+    panelGradeAndType.appendChild(panelType);
+
+    rowTop.appendChild(panelSubject);
+    rowTop.appendChild(panelGradeAndType);
+    container.appendChild(rowTop);
+
+    var panelPopular = document.createElement('div');
+    panelPopular.className = 'panel';
+    panelPopular.style.marginBottom = '1.25rem';
+    var popRows = (stats.topPopularApps || []).map(function (a, idx) {
+      var rankBadge = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : '#' + (idx + 1);
+      var modeTag = a.isHtmlContainer
+        ? '<span style="font-size:.72rem;background:#EFF8FF;color:#175CD3;border:1px solid #B2DDFF;padding:.05rem .45rem;border-radius:999px;">HTML</span>'
+        : '<span style="font-size:.72rem;background:#F2F4F7;color:#344054;border:1px solid #E4E7EC;padding:.05rem .45rem;border-radius:999px;">Web</span>';
+      return '<tr>' +
+        '<td style="font-weight:700;white-space:nowrap;">' + rankBadge + '</td>' +
+        '<td><strong>' + escapeHtml(a.title) + '</strong> ' +
+          (a.isVerified ? '<span style="color:var(--success);font-size:.78rem;font-weight:600;">✔</span> ' : '') +
+          modeTag +
+          '<br><span class="small muted">' + escapeHtml((a.subjectLabels || []).join(', ')) + ' • ' + escapeHtml((a.gradeLabels || []).join(', ')) + '</span>' +
+        '</td>' +
+        '<td>' + escapeHtml(a.creatorName) + '<br><span class="small muted">' + escapeHtml(a.schoolName) + '</span></td>' +
+        '<td style="white-space:nowrap;font-weight:700;color:var(--blue);">▶ ' + (a.playCount || 0).toLocaleString('id-ID') + 'x</td>' +
+      '</tr>';
+    }).join('');
+
+    panelPopular.innerHTML = '<h3 style="margin:0 0 .2rem;">🔥 Top 15 Aplikasi Paling Populer</h3>' +
+      '<p class="small muted" style="margin:0 0 .85rem;">Peringkat aplikasi dengan frekuensi pemutaran tertinggi oleh siswa dan guru.</p>' +
+      (popRows
+        ? '<div class="table-wrap"><table><thead><tr><th>Peringkat</th><th>Aplikasi & Mapel</th><th>Pengembang / Sekolah</th><th>Dimainkan</th></tr></thead><tbody>' + popRows + '</tbody></table></div>'
+        : '<div class="state"><p class="muted">Belum ada data pemutaran aplikasi.</p></div>');
+    container.appendChild(panelPopular);
+
+    var rowRankings = document.createElement('div');
+    rowRankings.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fit, minmax(340px, 1fr));gap:1.25rem;margin-bottom:1.25rem;align-items:start;';
+
+    var panelSchools = document.createElement('div');
+    panelSchools.className = 'panel';
+    var schRows = (stats.topSchools || []).map(function (s, idx) {
+      return '<tr>' +
+        '<td style="font-weight:700;">#' + (idx + 1) + '</td>' +
+        '<td><strong>' + escapeHtml(s.schoolName) + '</strong>' + (s.npsn ? '<br><span class="small muted">NPSN: ' + escapeHtml(s.npsn) + '</span>' : '') + '</td>' +
+        '<td style="font-weight:700;color:var(--navy);">' + s.appCount + ' karya</td>' +
+        '<td class="small" style="color:var(--blue);font-weight:600;">▶ ' + (s.totalPlays || 0).toLocaleString('id-ID') + 'x</td>' +
+      '</tr>';
+    }).join('');
+
+    var inactiveListHtml = '';
+    if (stats.inactiveSchools && stats.inactiveSchools.length > 0) {
+      inactiveListHtml = '<div style="margin-top:1rem;padding:.85rem;border-radius:10px;background:#FFFAEB;border:1px solid #FEDF89;">' +
+        '<strong style="color:#B54708;font-size:.86rem;">⚠️ ' + stats.inactiveSchools.length + ' SD Terdaftar Belum Mengunggah Karya:</strong>' +
+        '<p class="small" style="margin:.35rem 0 0;color:#7A271A;line-height:1.5;">' +
+        stats.inactiveSchools.map(function (s) { return escapeHtml(s.schoolName); }).join(', ') +
+        '</p></div>';
+    }
+
+    panelSchools.innerHTML = '<h3 style="margin:0 0 .2rem;">🏫 Sekolah Paling Aktif Mengunggah</h3>' +
+      '<p class="small muted" style="margin:0 0 .85rem;">Peringkat kontribusi karya per Sekolah Dasar di Kecamatan Tirtomoyo.</p>' +
+      (schRows
+        ? '<div class="table-wrap"><table><thead><tr><th>#</th><th>Sekolah</th><th>Karya</th><th>Total Main</th></tr></thead><tbody>' + schRows + '</tbody></table></div>'
+        : '<div class="state"><p class="muted">Belum ada data sekolah.</p></div>') +
+      inactiveListHtml;
+
+    var panelTeachers = document.createElement('div');
+    panelTeachers.className = 'panel';
+    panelTeachers.style.marginTop = '0';
+    var tchRows = (stats.topTeachers || []).map(function (t, idx) {
+      return '<tr>' +
+        '<td style="font-weight:700;">#' + (idx + 1) + '</td>' +
+        '<td><strong>' + escapeHtml(t.teacherName) + '</strong><br><span class="small muted">' + escapeHtml(t.schoolName) + '</span></td>' +
+        '<td style="font-weight:700;color:var(--navy);">' + t.appCount + ' karya</td>' +
+        '<td class="small" style="color:var(--blue);font-weight:600;">▶ ' + (t.totalPlays || 0).toLocaleString('id-ID') + 'x</td>' +
+      '</tr>';
+    }).join('');
+
+    panelTeachers.innerHTML = '<h3 style="margin:0 0 .2rem;">👨‍🏫 Guru Pengembang Paling Produktif</h3>' +
+      '<p class="small muted" style="margin:0 0 .85rem;">Top 15 guru dengan jumlah karya terbanyak dan total pemutarannya.</p>' +
+      (tchRows
+        ? '<div class="table-wrap"><table><thead><tr><th>#</th><th>Nama Guru & Sekolah</th><th>Karya</th><th>Total Main</th></tr></thead><tbody>' + tchRows + '</tbody></table></div>'
+        : '<div class="state"><p class="muted">Belum ada data guru pengembang.</p></div>');
+
+    rowRankings.appendChild(panelSchools);
+    rowRankings.appendChild(panelTeachers);
+    container.appendChild(rowRankings);
+
+    if (stats.monthlyTrend && stats.monthlyTrend.length > 0) {
+      var panelTrend = document.createElement('div');
+      panelTrend.className = 'panel';
+      var trendItems = stats.monthlyTrend.map(function (m) {
+        return { label: m.month, appCount: m.appCount, totalPlays: m.totalPlays };
+      });
+      panelTrend.innerHTML = '<h3 style="margin:0 0 .2rem;">📅 Tren Publikasi Aplikasi per Bulan</h3>' +
+        '<p class="small muted" style="margin:0 0 .85rem;">Perkembangan jumlah aplikasi yang diterbitkan setiap bulan.</p>' +
+        buildBarListHtml(trendItems, 'appCount', 'totalPlays', ' aplikasi baru', 'x total main', '');
+      container.appendChild(panelTrend);
+    }
+  }).catch(function (err) {
+    container.innerHTML = '<div class="state error"><h3>Gagal Memuat Statistik</h3><p>' + escapeHtml(err.message || 'Terjadi kesalahan server.') + '</p></div>';
+  });
+}
+
+function exportAdminStatisticsCsv_(stats) {
+  var rows = [];
+  var esc = function (v) {
+    var s = String(v === null || v === undefined ? '' : v);
+    if (/[",\n]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
+    return s;
+  };
+
+  rows.push(['RINGKASAN STATISTIK TIRTOMOYO EDUAPPS']);
+  rows.push(['Metrik', 'Nilai']);
+  var ov = stats.overview || {};
+  rows.push(['Total Aplikasi Terbit', ov.totalPublishedApps || 0]);
+  rows.push(['Total Pemutaran', ov.totalPlays || 0]);
+  rows.push(['Rata-rata Pemutaran per Aplikasi', ov.avgPlaysPerApp || 0]);
+  rows.push(['Aplikasi Terverifikasi', ov.verifiedCount || 0]);
+  rows.push(['Aplikasi HTML Container', ov.htmlContainerCount || 0]);
+  rows.push(['Aplikasi Tautan Web/GAS', ov.webUrlCount || 0]);
+  rows.push(['SD Berkontribusi', (ov.contributingSchoolsCount || 0) + ' dari ' + (ov.totalRegisteredSchools || 0)]);
+  rows.push(['Guru Pengembang Aktif', ov.contributingTeachersCount || 0]);
+  rows.push([]);
+
+  rows.push(['STATISTIK MATA PELAJARAN']);
+  rows.push(['Mata Pelajaran', 'Jumlah Aplikasi', 'Total Dimainkan']);
+  (stats.subjectStats || []).forEach(function (s) {
+    rows.push([s.label, s.appCount, s.totalPlays]);
+  });
+  rows.push([]);
+
+  rows.push(['PERINGKAT SEKOLAH PALING AKTIF']);
+  rows.push(['Peringkat', 'Nama Sekolah', 'NPSN', 'Jumlah Karya', 'Total Dimainkan']);
+  (stats.topSchools || []).forEach(function (s, idx) {
+    rows.push([idx + 1, s.schoolName, s.npsn, s.appCount, s.totalPlays]);
+  });
+  rows.push([]);
+
+  rows.push(['PERINGKAT GURU PALING PRODUKTIF']);
+  rows.push(['Peringkat', 'Nama Guru', 'Asal Sekolah', 'Jumlah Karya', 'Total Dimainkan']);
+  (stats.topTeachers || []).forEach(function (t, idx) {
+    rows.push([idx + 1, t.teacherName, t.schoolName, t.appCount, t.totalPlays]);
+  });
+  rows.push([]);
+
+  rows.push(['TOP 15 APLIKASI PALING POPULER']);
+  rows.push(['Peringkat', 'Judul Aplikasi', 'Mata Pelajaran', 'Kelas', 'Pengembang', 'Sekolah', 'Total Dimainkan']);
+  (stats.topPopularApps || []).forEach(function (a, idx) {
+    rows.push([
+      idx + 1,
+      a.title,
+      (a.subjectLabels || []).join('; '),
+      (a.gradeLabels || []).join('; '),
+      a.creatorName,
+      a.schoolName,
+      a.playCount
+    ]);
+  });
+
+  var csvContent = '\uFEFF' + rows.map(function (r) {
+    return r.map(esc).join(',');
+  }).join('\n');
+
+  var blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url;
+  a.download = 'Statistik_Tirtomoyo_EduApps_' + new Date().toISOString().slice(0, 10) + '.csv';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(function () { URL.revokeObjectURL(url); }, 10000);
+  showToast('Laporan statistik CSV berhasil diunduh!', 'success');
 }
 
 /* ==========================================================================
