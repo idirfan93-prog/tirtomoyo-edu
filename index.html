@@ -731,6 +731,8 @@ var PUBLIC_STATE = {
   }
 };
 
+var HOME_DATA_VER_ = 'v2_lh3';
+
 function initPublicApp() {
   window.addEventListener('hashchange', handlePublicRoute);
 
@@ -740,7 +742,14 @@ function initPublicApp() {
     var cHome = localStorage.getItem('eduapps_pub_homedata');
     if (cConf) PUBLIC_STATE.config = JSON.parse(cConf);
     if (cCats) PUBLIC_STATE.categories = JSON.parse(cCats);
-    if (cHome) PUBLIC_STATE.homeData = JSON.parse(cHome);
+    if (cHome) {
+      var parsedHome = JSON.parse(cHome);
+      if (parsedHome && parsedHome._schemaVer === HOME_DATA_VER_) {
+        PUBLIC_STATE.homeData = parsedHome;
+      } else {
+        localStorage.removeItem('eduapps_pub_homedata');
+      }
+    }
   } catch (e) {}
 
   if (PUBLIC_STATE.config && PUBLIC_STATE.categories) {
@@ -847,26 +856,42 @@ function parseHashParams(hash) {
 function renderHomePage(container) {
   var now = new Date();
   var currentHourTag = now.getFullYear() + '-' + now.getMonth() + '-' + now.getDate() + '-' + now.getHours();
-  var isSameHourCache = PUBLIC_STATE.homeData && PUBLIC_STATE.homeData._cachedHour === currentHourTag;
+  var isSameHourCache = PUBLIC_STATE.homeData && PUBLIC_STATE.homeData._cachedHour === currentHourTag && PUBLIC_STATE.homeData._schemaVer === HOME_DATA_VER_;
 
   if (isSameHourCache) {
     buildHomePageDOM_(container, PUBLIC_STATE.homeData);
   } else {
-    container.innerHTML = '<div class="skeleton" style="height:350px;margin-bottom:2rem;"></div><div class="skeleton" style="height:250px;"></div>';
+    var placeholderHome = PUBLIC_STATE.homeData || {
+      stats: null,
+      dailyPicks: [],
+      featured: [],
+      latest: [],
+      subjects: []
+    };
+    buildHomePageDOM_(container, placeholderHome);
+    if (!PUBLIC_STATE.homeData) {
+      var mainC = container.querySelector('.container:last-of-type');
+      if (mainC) {
+        mainC.innerHTML = '<div class="skeleton" style="height:110px;margin:1.5rem 0;"></div><div class="skeleton" style="height:240px;"></div>';
+      }
+    }
   }
 
   callApi('api_getHomeData').then(function (data) {
     data._cachedHour = currentHourTag;
+    data._schemaVer = HOME_DATA_VER_;
     var prevJson = '';
     var nextJson = '';
     try {
       if (PUBLIC_STATE.homeData) {
         var prevCopy = Object.assign({}, PUBLIC_STATE.homeData);
         delete prevCopy._cachedHour;
+        delete prevCopy._schemaVer;
         prevJson = JSON.stringify(prevCopy);
       }
       var nextCopy = Object.assign({}, data);
       delete nextCopy._cachedHour;
+      delete nextCopy._schemaVer;
       nextJson = JSON.stringify(nextCopy);
     } catch (e) {}
 
@@ -1462,14 +1487,263 @@ function executeCatalogSearch() {
 
 /* ---------- 3. DETAIL APLIKASI ---------- */
 
-function renderDetailPage(container, slugOrId) {
-  container.innerHTML = '<div class="container" style="padding:2rem 1rem;"><div class="spinner"></div><p style="text-align:center;">Memuat detail aplikasi...</p></div>';
+function findSeedAppBySlugOrId_(slugOrId) {
+  var target = decodeURIComponent(slugOrId || '').trim().toLowerCase();
+  if (!target) return null;
 
+  var matchItem = function (item) {
+    if (!item) return false;
+    var s = String(item.slug || '').toLowerCase();
+    var id = String(item.appId || '').toLowerCase();
+    return s === target || id === target;
+  };
+
+  if (matchItem(PUBLIC_STATE.currentApp)) return PUBLIC_STATE.currentApp;
+
+  var home = PUBLIC_STATE.homeData;
+  if (home) {
+    var lists = [home.dailyPicks, home.featured, home.latest];
+    for (var i = 0; i < lists.length; i++) {
+      if (Array.isArray(lists[i])) {
+        for (var j = 0; j < lists[i].length; j++) {
+          if (matchItem(lists[i][j])) return lists[i][j];
+        }
+      }
+    }
+  }
+
+  var cacheKeys = Object.keys(PUBLIC_STATE.catalogCache || {});
+  for (var k = 0; k < cacheKeys.length; k++) {
+    var entry = PUBLIC_STATE.catalogCache[cacheKeys[k]];
+    var items = entry && entry.data && entry.data.items;
+    if (Array.isArray(items)) {
+      for (var m = 0; m < items.length; m++) {
+        if (matchItem(items[m])) return items[m];
+      }
+    }
+  }
+  return null;
+}
+
+function renderDetailPage(container, slugOrId) {
   var routeSeq = ACTIVE_ROUTE_SEQ;
-  callApi('api_getPublicAppDetail', { slug: slugOrId, appId: slugOrId }).then(function (app) {
-    if (routeSeq !== ACTIVE_ROUTE_SEQ) return;
+  var seedApp = findSeedAppBySlugOrId_(slugOrId);
+
+  var renderDetailView_ = function (app, isPartial) {
     PUBLIC_STATE.currentApp = app;
     container.innerHTML = '';
+    var root = document.createElement('div');
+    root.className = 'container';
+
+    var backBtn = document.createElement('button');
+    backBtn.type = 'button';
+    backBtn.className = 'btn-link back';
+    backBtn.innerHTML = '← Kembali ke Katalog';
+    backBtn.onclick = function () {
+      navigateTo('#/katalog');
+    };
+    root.appendChild(backBtn);
+
+    var wrap = document.createElement('div');
+    wrap.className = 'detail';
+
+    var colLeft = document.createElement('div');
+    var thumbBox = document.createElement('div');
+    thumbBox.className = 'thumb';
+
+    if (app.thumbnailUrl) {
+      var img = document.createElement('img');
+      img.src = getOptimizedThumbUrl(app.thumbnailUrl, 900);
+      img.alt = app.title;
+      img.fetchPriority = 'high';
+      img.decoding = 'async';
+      img.onerror = function () {
+        if (app.thumbnailUrl && img.src !== app.thumbnailUrl) {
+          img.src = app.thumbnailUrl;
+          return;
+        }
+        thumbBox.innerHTML = '';
+        thumbBox.appendChild(createPlaceholderThumb(app.title, app.category ? app.category.label : ''));
+      };
+      thumbBox.appendChild(img);
+    } else {
+      thumbBox.appendChild(createPlaceholderThumb(app.title, app.category ? app.category.label : ''));
+    }
+    colLeft.appendChild(thumbBox);
+
+    var descPanel = document.createElement('div');
+    descPanel.className = 'panel';
+    descPanel.style.marginTop = '1rem';
+
+    var h1 = document.createElement('h1');
+    h1.textContent = app.title;
+    h1.style.marginTop = '.25rem';
+    descPanel.appendChild(h1);
+
+    var badgeRow = document.createElement('div');
+    badgeRow.className = 'badges';
+    badgeRow.style.margin = '.75rem 0 1rem';
+
+    if (app.isVerified) {
+      var bVer = document.createElement('span');
+      bVer.className = 'badge verified';
+      bVer.style.background = '#ECFDF3';
+      bVer.style.color = '#027A48';
+      bVer.style.borderColor = '#ABEFC6';
+      bVer.textContent = '✔ Terverifikasi';
+      badgeRow.appendChild(bVer);
+    }
+    if (app.subjectLabels) {
+      app.subjectLabels.forEach(function (l) {
+        var b = document.createElement('span');
+        b.className = 'badge';
+        b.textContent = l;
+        badgeRow.appendChild(b);
+      });
+    }
+    if (app.gradeLabels && app.gradeLabels.length > 0) {
+      if (app.gradeLabels.length >= 6) {
+        var b = document.createElement('span');
+        b.className = 'badge grade';
+        b.textContent = 'Semua Kelas';
+        badgeRow.appendChild(b);
+      } else {
+        app.gradeLabels.forEach(function (g) {
+          var b = document.createElement('span');
+          b.className = 'badge grade';
+          b.textContent = String(g).replace(/^SD\s+/i, '');
+          badgeRow.appendChild(b);
+        });
+      }
+    }
+    if (app.category) {
+      var b = document.createElement('span');
+      b.className = 'badge type';
+      b.textContent = app.category.label;
+      badgeRow.appendChild(b);
+    }
+    descPanel.appendChild(badgeRow);
+
+    var hDesc = document.createElement('h3');
+    hDesc.textContent = 'Deskripsi Aplikasi';
+    var pDesc = document.createElement('div');
+    pDesc.className = 'prewrap muted';
+    pDesc.textContent = app.description || app.shortDescription || (isPartial ? 'Memuat deskripsi lengkap...' : '');
+    descPanel.appendChild(hDesc);
+    descPanel.appendChild(pDesc);
+
+    if (app.learningObjective) {
+      var hObj = document.createElement('h3');
+      hObj.style.marginTop = '1.25rem';
+      hObj.textContent = 'Tujuan Pembelajaran';
+      var pObj = document.createElement('div');
+      pObj.className = 'prewrap muted';
+      pObj.textContent = app.learningObjective;
+      descPanel.appendChild(hObj);
+      descPanel.appendChild(pObj);
+    }
+    colLeft.appendChild(descPanel);
+
+    var colRight = document.createElement('div');
+
+    var actPanel = document.createElement('div');
+    actPanel.className = 'panel';
+
+    var launchBtn = document.createElement('a');
+    launchBtn.href = '#/play/' + encodeURIComponent(app.slug || app.appId);
+    launchBtn.className = 'btn btn-primary launch';
+    launchBtn.innerHTML = '🎮 Mainkan di Portal Sekarang';
+    launchBtn.onclick = function () {
+      trackPlay(app.appId, app.slug);
+    };
+    actPanel.appendChild(launchBtn);
+
+    var isDetailHtmlApp = Boolean(app.isHtmlContainer || /^html-app:\/\//i.test(String(app.targetUrl || '')));
+    var externalBtn = document.createElement('a');
+    externalBtn.href = isDetailHtmlApp ? '#open-html-tab' : (app.targetUrl || '#/play/' + encodeURIComponent(app.slug || app.appId));
+    if (!isDetailHtmlApp && app.targetUrl) {
+      externalBtn.target = '_blank';
+      externalBtn.rel = 'noopener noreferrer';
+    }
+    externalBtn.className = 'btn btn-secondary btn-sm';
+    externalBtn.style.width = '100%';
+    externalBtn.style.marginTop = '.5rem';
+    externalBtn.innerHTML = '↗ Buka di Tab Terpisah';
+    externalBtn.onclick = function (e) {
+      trackPlay(app.appId, app.slug);
+      if (isDetailHtmlApp) {
+        e.preventDefault();
+        externalBtn.textContent = '⏳ Membuka aplikasi...';
+        callApi('api_getHtmlAppContent', { targetUrl: app.targetUrl }).then(function (res) {
+          externalBtn.innerHTML = '↗ Buka di Tab Terpisah';
+          openHtmlSandboxTab_(res.htmlContent, app.title);
+        }).catch(function (err) {
+          externalBtn.innerHTML = '↗ Buka di Tab Terpisah';
+          showToast(err.message || 'Gagal membuka aplikasi HTML.', 'error');
+        });
+      }
+    };
+    actPanel.appendChild(externalBtn);
+
+    var shareBtn = document.createElement('button');
+    shareBtn.type = 'button';
+    shareBtn.className = 'btn btn-secondary btn-sm';
+    shareBtn.style.width = '100%';
+    shareBtn.style.marginTop = '.65rem';
+    shareBtn.innerHTML = '📤 Bagikan Aplikasi';
+    shareBtn.onclick = function () {
+      triggerNativeShare(app);
+    };
+    actPanel.appendChild(shareBtn);
+
+    var notice = document.createElement('p');
+    notice.className = 'help';
+    notice.style.marginTop = '.65rem';
+    notice.textContent = 'Aplikasi dapat dimainkan langsung di portal atau di tab baru.';
+    actPanel.appendChild(notice);
+    colRight.appendChild(actPanel);
+
+    var metaPanel = document.createElement('div');
+    metaPanel.className = 'panel';
+    var hMeta = document.createElement('h3');
+    hMeta.textContent = 'Informasi Pengembang';
+    metaPanel.appendChild(hMeta);
+
+    var dl = document.createElement('dl');
+    dl.className = 'meta';
+    dl.innerHTML = '<dt>Pengembang</dt><dd>' + escapeHtml(app.creatorDisplayName || '-') + '</dd>' +
+      '<dt>Sekolah</dt><dd>' + escapeHtml(app.schoolDisplayName || 'Kecamatan Tirtomoyo') + '</dd>' +
+      '<dt>Dipublikasi</dt><dd>' + formatDateId(app.publishedAt) + '</dd>' +
+      '<dt>Dimainkan</dt><dd><strong>' + (app.playCount || 0) + ' kali</strong></dd>';
+
+    if (app.tags && app.tags.length > 0) {
+      dl.innerHTML += '<dt>Kata Kunci</dt><dd>' + escapeHtml(app.tags.join(', ')) + '</dd>';
+    }
+    metaPanel.appendChild(dl);
+    colRight.appendChild(metaPanel);
+
+    wrap.appendChild(colLeft);
+    wrap.appendChild(colRight);
+    root.appendChild(wrap);
+    container.appendChild(root);
+  };
+
+  if (seedApp) {
+    renderDetailView_(seedApp, true);
+  } else {
+    container.innerHTML = '<div class="container" style="padding:2rem 1rem;"><div class="spinner"></div><p style="text-align:center;">Memuat detail aplikasi...</p></div>';
+  }
+
+  callApi('api_getPublicAppDetail', { slug: slugOrId, appId: slugOrId }).then(function (app) {
+    if (routeSeq !== ACTIVE_ROUTE_SEQ) return;
+    renderDetailView_(app, false);
+  }).catch(function (err) {
+    if (routeSeq !== ACTIVE_ROUTE_SEQ) return;
+    if (!seedApp) {
+      container.innerHTML = '<div class="container" style="padding:2.5rem 1rem;"><div class="state error"><h3>Aplikasi Tidak Ditemukan</h3><p>' + escapeHtml(err.message) + '</p><a href="#/katalog" class="btn btn-primary btn-sm">Kembali ke Katalog</a></div></div>';
+    }
+  });
+}
     var root = document.createElement('div');
     root.className = 'container';
 
