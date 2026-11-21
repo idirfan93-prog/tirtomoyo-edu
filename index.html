@@ -1410,6 +1410,25 @@ function renderCatalogResults_(res, grid, info, pager) {
   });
   grid.appendChild(frag);
 
+  if (res.pagination && res.pagination.page < res.pagination.totalPages) {
+    var nextPayload = {
+      page: res.pagination.page + 1,
+      pageSize: PUBLIC_STATE.catalogPageSize,
+      query: PUBLIC_STATE.catalogFilters.query,
+      gradeIds: PUBLIC_STATE.catalogFilters.gradeIds,
+      subjectIds: PUBLIC_STATE.catalogFilters.subjectIds,
+      categoryIds: PUBLIC_STATE.catalogFilters.categoryIds,
+      sort: PUBLIC_STATE.catalogFilters.sort
+    };
+    var nextKey = JSON.stringify(nextPayload);
+    var existingNext = PUBLIC_STATE.catalogCache[nextKey];
+    if (!existingNext || (Date.now() - existingNext.ts >= 120000)) {
+      callApi('api_listPublicApps', nextPayload).then(function (nextRes) {
+        PUBLIC_STATE.catalogCache[nextKey] = { data: nextRes, ts: Date.now() };
+      }).catch(function () {});
+    }
+  }
+
   if (res.pagination.totalPages > 1 && pager) {
     if (res.pagination.page > 1) {
       var prevBtn = document.createElement('button');
@@ -1417,8 +1436,8 @@ function renderCatalogResults_(res, grid, info, pager) {
       prevBtn.textContent = '← Sebelumnya';
       prevBtn.onclick = function () {
         PUBLIC_STATE.catalogPage--;
+        window.scrollTo({ top: 0, behavior: 'auto' });
         executeCatalogSearch();
-        window.scrollTo({ top: 0, behavior: 'smooth' });
       };
       pager.appendChild(prevBtn);
     }
@@ -1434,8 +1453,8 @@ function renderCatalogResults_(res, grid, info, pager) {
       nextBtn.textContent = 'Berikutnya →';
       nextBtn.onclick = function () {
         PUBLIC_STATE.catalogPage++;
+        window.scrollTo({ top: 0, behavior: 'auto' });
         executeCatalogSearch();
-        window.scrollTo({ top: 0, behavior: 'smooth' });
       };
       pager.appendChild(nextBtn);
     }
