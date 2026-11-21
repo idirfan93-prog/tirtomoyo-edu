@@ -1549,7 +1549,9 @@ function renderDetailPage(container, slugOrId) {
   var seedApp = findSeedAppBySlugOrId_(slugOrId);
 
   var renderDetailView_ = function (app, isPartial) {
-    PUBLIC_STATE.currentApp = app;
+    if (app && app.targetUrl) {
+      PUBLIC_STATE.currentApp = app;
+    }
     container.innerHTML = '';
     var root = document.createElement('div');
     root.className = 'container';
@@ -1770,10 +1772,14 @@ function renderPlayPage(container, slugOrId) {
   var routeSeq = ACTIVE_ROUTE_SEQ;
   var decodedId = decodeURIComponent(slugOrId || '');
   var cached = PUBLIC_STATE.currentApp;
-  var isMatch = cached && (cached.slug === decodedId || cached.appId === decodedId || cached.slug === slugOrId || cached.appId === slugOrId);
+  var isMatch = cached && Boolean(cached.targetUrl) && (cached.slug === decodedId || cached.appId === decodedId || cached.slug === slugOrId || cached.appId === slugOrId);
 
   function mountPlayer(app) {
     if (routeSeq !== ACTIVE_ROUTE_SEQ) return;
+    if (!app || !app.targetUrl) {
+      container.innerHTML = '<div class="container" style="padding:2.5rem 1rem;"><div class="state error"><h3>Tautan Aplikasi Tidak Tersedia</h3><p>URL aplikasi belum siap atau tidak valid.</p><a href="#/katalog" class="btn btn-primary btn-sm">Kembali ke Katalog</a></div></div>';
+      return;
+    }
     PUBLIC_STATE.currentApp = app;
     container.innerHTML = '';
 
