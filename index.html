@@ -2624,13 +2624,20 @@ function validateCurrentStep(step, form) {
     var subjectIds = [];
     form.querySelectorAll('input[name="subjectIds"]:checked').forEach(function (cb) { subjectIds.push(cb.value); });
 
+    var obj = (form.querySelector('[name="learningObjective"]').value || '').trim();
     if (!title) errors.title = 'Nama aplikasi wajib diisi (minimal 3 karakter).';
     else if (title.length < 3) errors.title = 'Nama aplikasi minimal 3 karakter.';
+    else if (title.length > 100) errors.title = 'Nama aplikasi maksimal 100 karakter.';
     if (!shortDesc) errors.shortDescription = 'Ringkasan singkat wajib diisi.';
+    else if (shortDesc.length < 10) errors.shortDescription = 'Ringkasan singkat minimal 10 karakter.';
+    else if (shortDesc.length > 200) errors.shortDescription = 'Ringkasan singkat maksimal 200 karakter.';
     if (!desc) errors.description = 'Deskripsi lengkap wajib diisi (minimal 20 karakter).';
     else if (desc.length < 20) errors.description = 'Deskripsi lengkap minimal 20 karakter.';
+    else if (desc.length > 2000) errors.description = 'Deskripsi lengkap maksimal 2.000 karakter.';
+    if (obj.length > 1000) errors.learningObjective = 'Tujuan pembelajaran maksimal 1.000 karakter.';
     if (gradeIds.length === 0) errors.gradeIds = 'Pilih minimal satu kelas SD.';
     if (subjectIds.length === 0) errors.subjectIds = 'Pilih minimal satu mata pelajaran.';
+    else if (subjectIds.length > 3) errors.subjectIds = 'Pilih maksimal 3 mata pelajaran.';
     if (!catId) errors.categoryId = 'Pilih jenis media/aplikasi.';
   } else if (step === 2) {
     var inUrl = form.querySelector('[name="targetUrl"]');
@@ -3026,31 +3033,111 @@ function handleFormSubmit(form, btnSubmit) {
     btnSubmit.disabled = false;
     btnSubmit.textContent = originalBtnText;
 
-    if (err && err.fields) applyFormErrors(err.fields);
-    showToast(err.message || 'Gagal mengirim pengajuan.', 'error');
+    var fieldMap = (err && (err.fields || err.details)) || null;
+    if (fieldMap && typeof fieldMap === 'object' && Object.keys(fieldMap).length > 0) {
+      applyFormErrors(fieldMap);
+      var firstMsg = fieldMap[Object.keys(fieldMap)[0]];
+      showToast(firstMsg || err.message || 'Harap periksa kembali isian yang ditandai merah.', 'error');
+    } else {
+      showSubmitGlobalError_(err && err.message ? err.message : 'Gagal mengirim pengajuan.');
+      showToast(err && err.message ? err.message : 'Gagal mengirim pengajuan.', 'error');
+    }
   });
 }
 
+function showSubmitGlobalError_(message) {
+  var form = document.getElementById('submissionForm');
+  if (!form) return;
+  var box = document.getElementById('submitGlobalErrorBox');
+  if (!box) {
+    box = document.createElement('div');
+    box.id = 'submitGlobalErrorBox';
+    box.className = 'alert alert-error';
+    box.style.margin = '1rem 1.5rem 0';
+    var body = form.querySelector('.form-card-body');
+    if (body && body.parentNode) {
+      body.parentNode.insertBefore(box, body);
+    }
+  }
+  box.innerHTML = '<strong>Pengajuan Belum Dapat Dikirim:</strong> ' + escapeHtml(message);
+  box.style.display = 'block';
+  box.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
 function clearFormErrors() {
+  var globalBox = document.getElementById('submitGlobalErrorBox');
+  if (globalBox) globalBox.style.display = 'none';
   document.querySelectorAll('.field.has-error').forEach(function (f) { f.classList.remove('has-error'); });
   document.querySelectorAll('.field-error').forEach(function (e) { e.style.display = 'none'; e.textContent = ''; });
 }
 
 function applyFormErrors(fields) {
+  var keyAlias = {
+    schoolName: 'schoolSelect',
+    schoolNpsn: 'schoolSelect',
+    schoolId: 'schoolSelect',
+    launch_url: 'targetUrl',
+    thumbnail_url: 'thumbnailUrl',
+    developer_name: 'creatorName',
+    short_description: 'shortDescription',
+    learning_objective: 'learningObjective',
+    subject_ids: 'subjectIds',
+    grade_levels: 'gradeIds',
+    category_id: 'categoryId'
+  };
+
+  var normalizedFields = {};
+  Object.keys(fields).forEach(function (rawKey) {
+    var mappedKey = keyAlias[rawKey] || rawKey;
+    if (!normalizedFields[mappedKey]) {
+      normalizedFields[mappedKey] = fields[rawKey];
+    }
+  });
+
+  var targetStep = null;
   var firstErrorEl = null;
-  Object.keys(fields).forEach(function (fieldKey) {
+
+  Object.keys(normalizedFields).forEach(function (fieldKey) {
+    var fieldEl = document.getElementById('field_' + fieldKey);
+    if (fieldEl) {
+      var stepWrap = fieldEl.closest('.wizard-step-content');
+      if (stepWrap && stepWrap.id) {
+        var stepNum = parseInt(stepWrap.id.replace('wizardStep_', ''), 10);
+        if (!isNaN(stepNum) && (targetStep === null || stepNum < targetStep)) {
+          targetStep = stepNum;
+        }
+      }
+    }
+  });
+
+  if (targetStep !== null && targetStep !== SUBMISSION_WIZARD_STEP) {
+    for (var i = 1; i <= 4; i++) {
+      var el = document.getElementById('wizardStep_' + i);
+      if (el) el.style.display = (i === targetStep) ? 'block' : 'none';
+    }
+    SUBMISSION_WIZARD_STEP = targetStep;
+    updateWizardUI(targetStep);
+  }
+
+  Object.keys(normalizedFields).forEach(function (fieldKey) {
     var fieldEl = document.getElementById('field_' + fieldKey);
     if (fieldEl) {
       fieldEl.classList.add('has-error');
       var errBox = fieldEl.querySelector('.field-error');
       if (errBox) {
-        errBox.textContent = fields[fieldKey];
+        errBox.textContent = normalizedFields[fieldKey];
         errBox.style.display = 'block';
       }
       if (!firstErrorEl) firstErrorEl = fieldEl;
     }
   });
-  if (firstErrorEl) firstErrorEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+  if (firstErrorEl) {
+    firstErrorEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  } else {
+    var summaryMsgs = Object.keys(normalizedFields).map(function (k) { return normalizedFields[k]; });
+    showSubmitGlobalError_(summaryMsgs.join(' | '));
+  }
 }
 
 function renderSubmissionSuccess(res) {
